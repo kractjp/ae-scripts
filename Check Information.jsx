@@ -70,14 +70,13 @@
       ddComp.removeAll();
       avSources = [];
 
-      // (a) プロジェクト保存済み & アクティブコンポあるか？
       if (!hasSavedProject()) {
-        // 何も表示せず終了
+        // プロジェクト未保存 → 処理せず終了
         return;
       }
       var ac = getActiveComp();
       if (!ac) {
-        // 何も表示せず終了
+        // アクティブコンポ無 → 処理せず終了
         return;
       }
 
@@ -88,18 +87,12 @@
         var s = lyr.source;
         if (!s) continue;
 
-        // -----------------------------------------
-        // (1) s が CompItem → コンポレイヤー
-        // (2) s が FootageItem → 動画のみ (静止画は除外)
-        // -----------------------------------------
+        // コンポ or 動画フッテージのみ
         if (s instanceof CompItem) {
           avSources.push({ source: s, type: "comp", name: s.name });
         } else if (s instanceof FootageItem) {
-          // フッテージが動画かどうかを判定
-          // 静止画かどうかは mainSource.isStill が true/false でわかる
-          var f = s.mainSource; // FootageSource
+          var f = s.mainSource;
           if (!f.isStill) {
-            // 静止画でなければ「動画」とみなして追加
             avSources.push({ source: s, type: "footage", name: s.name });
           }
         }
@@ -118,22 +111,14 @@
 
     // === (2) 「OK」ボタン ===
     btnApply.onClick = function () {
-      if (!hasSavedProject()) {
-        return;
-      }
+      if (!hasSavedProject()) return;
       var ac = getActiveComp();
-      if (!ac) {
-        return;
-      }
-      if (ddComp.items.length === 0 || !ddComp.selection) {
-        return;
-      }
+      if (!ac) return;
+      if (ddComp.items.length === 0 || !ddComp.selection) return;
 
       var selIndex = ddComp.selection.index;
       var pickedObj = avSources[selIndex];
-      if (!pickedObj || !pickedObj.source) {
-        return;
-      }
+      if (!pickedObj || !pickedObj.source) return;
 
       // レイヤー名取得
       var currentInfoName = editCurrentInfoName.text;
@@ -192,25 +177,22 @@
     var compInfoString = "";
 
     if (pickedObj.type === "comp") {
-      // ****** コンポレイヤー ******
-      var rawFps = pickedObj.source.frameRate;
+      // ****** コンポレイヤーの場合 ******
+      var rawFps = pickedObj.source.frameRate; // float
       var displayedFps = parseFloat(rawFps.toFixed(2));
 
-      var compW = pickedObj.source.width;
-      var compH = pickedObj.source.height;
       var compDur = pickedObj.source.duration;
       var compTotalFrames = Math.round(displayedFps * compDur);
+      var compTC = convertSecondsToTC(compDur, displayedFps);
 
+      // 5桁ゼロ埋め
+      var framesPadded = padFrames(compTotalFrames, 5);
+
+      // compName: "ProjectName | コンポ名"
       compNameString = projectFileName + " | " + pickedObj.source.name;
-      compInfoString =
-        compW +
-        "x" +
-        compH +
-        " / " +
-        displayedFps +
-        "fps / " +
-        compTotalFrames +
-        "f";
+
+      // compInfo: "TC/Fm: 00:00:10:05/00300f"
+      compInfoString = "TC/Fm: " + compTC + "/" + framesPadded;
     } else if (pickedObj.type === "footage") {
       // ****** 動画フッテージ ******
       compNameString = projectFileName + " | " + activeCompName;
@@ -221,10 +203,14 @@
       var footTotalFrames = Math.round(footFps * footDur);
       var footTC = convertSecondsToTC(footDur, footFps);
 
+      // 5桁ゼロ埋め
+      var framesPadded2 = padFrames(footTotalFrames, 5);
+
+      // example: "MyVideo.MP4 TC/Fm: 00:00:10:05/00300f"
       compInfoString =
-        pickedObj.name + " TC/Fm: " + footTC + " / " + footTotalFrames + "f";
+        pickedObj.name + " TC/Fm: " + footTC + "/" + framesPadded2;
     } else {
-      // 不明な場合
+      // 不明
       compNameString = projectFileName + " | " + activeCompName;
       compInfoString = "(不明なソース)";
     }
@@ -232,7 +218,7 @@
     compositionNameLayer.property("Source Text").setValue(compNameString);
     compositionInfoLayer.property("Source Text").setValue(compInfoString);
 
-    // ここでもアラート等は出さない
+    // ここでは完了アラート出さず終了
   }
 
   //=====================================
@@ -256,6 +242,7 @@
     var nm = app.project.file.name; // "MyProject.aep"
     return nm.replace(/\.aep$/i, "");
   }
+
   function createDateTimeString() {
     var d = new Date();
     function pad(num) {
@@ -307,6 +294,8 @@
       machineName
     );
   }
+
+  // 総フレーム数→ タイムコード文字列 (HH:MM:SS:FF)
   function convertSecondsToTC(durationSec, fps) {
     var totalFrames = Math.round(durationSec * fps);
     var hours = Math.floor(totalFrames / (fps * 3600));
@@ -330,6 +319,15 @@
       ":" +
       pad2(frames)
     );
+  }
+
+  // 5桁ゼロ埋め
+  function padFrames(num, digits) {
+    var s = String(num);
+    while (s.length < digits) {
+      s = "0" + s;
+    }
+    return s;
   }
 
   //=====================================
