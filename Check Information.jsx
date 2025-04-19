@@ -1,24 +1,121 @@
 // ================================================
 // KRACT Check Information AutoLayer
-// Version 2.31 (Folder Management Update)
+// Version 2.35 (Settings File Extensionless)
 // ================================================
 
 (function (thisObj) {
   // --- グローバル設定 ---
   var SCRIPT_NAME = "Check Information AutoLayer";
-  var SCRIPT_VERSION = "2.31_folderMgmt"; // バージョン
+  var SCRIPT_VERSION = "2.35_ext_less"; // バージョン更新
   var FONT_POSTSCRIPT_NAME = "GeistMono-Medium";
   var FONT_SIZE = 20;
   var PRECOMP_PREFIX = "_check-data_";
   var PRECOMP_FOLDER_NAME = "_check-data"; // プリコンポーズとロゴの親フォルダ
-  var FOOTAGE_FOLDER_NAME = "footage"; // ロゴフッテージを格納するサブフォルダ名
-  var SETTINGS_SUBDIR = "settings";
-  var SETTINGS_SUFFIX = ".config.json";
-  var LOGO_TARGET_FILENAME = "checkinfo-logo.ai"; // 管理ディレクトリ内のロゴファイル名
+  var FOOTAGE_FOLDER_NAME = "footage"; // AEプロジェクト内のロゴフッテージを格納するサブフォルダ名
+  var SETTINGS_DIR_NAME = ".settings"; // ★追加: 設定ディレクトリ名
+  // var PROJECT_NAME_FILE_EXTENSION = ".txt"; // ★削除: プロジェクト名ファイルの拡張子
+  var LOGO_MANAGE_BASE_FOLDER_NAME = "Check Information AutoLayer"; // 書類フォルダ内に作成するベースフォルダ名
+  var LOGO_MANAGE_SUBFOLDER_NAME = "footage"; // ロゴを格納するサブフォルダ名
+  var LOGO_TARGET_FILENAME = "checkinfo-logo.ai"; // 管理ディレクトリにコピーされるロゴファイル名
   var LOGO_FOOTAGE_NAME = "checkinfo-logo.ai"; // AEプロジェクト内のフッテージ名
   var LOGO_LAYER_NAME = "logo";
   var LOGO_POSITION = [960, 1131.75];
   var LOGO_SCALE = [16, 16];
+
+  // ★★★ デバッグログファイル設定 ★★★
+  var DEBUG_LOG_FILENAME = "CheckInfo_DebugLog.txt";
+  var DEBUG_LOG_FILE_PATH = Folder.desktop.fsName + "/" + DEBUG_LOG_FILENAME; // デスクトップに保存
+
+  // --- ログ書き込み関数 ---
+  function logToFile(message) {
+    try {
+      var logFile = File(DEBUG_LOG_FILE_PATH);
+      logFile.encoding = "UTF-8";
+      // 追記モードでファイルを開く (なければ新規作成)
+      if (logFile.open("a")) {
+        var currentTime = new Date().toLocaleTimeString([], { hour12: false });
+        logFile.writeln("[" + currentTime + "] " + message);
+        logFile.close();
+      } else {
+        // alert が使えるなら通知、使えない場合は仕方ない
+        try {
+          alert(
+            "デバッグログファイルを開けません(a): " +
+              logFile.error +
+              "\nPath: " +
+              DEBUG_LOG_FILE_PATH
+          );
+        } catch (e) {}
+      }
+    } catch (e) {
+      // alert が使えるなら通知、使えない場合は仕方ない
+      try {
+        alert(
+          "デバッグログ書き込み中にエラー: " +
+            e.toString() +
+            "\nPath: " +
+            DEBUG_LOG_FILE_PATH
+        );
+      } catch (err) {}
+    }
+  }
+
+  // --- writeLn 関数を修正 ---
+  function writeLn(message) {
+    // ファイルに書き込む
+    logToFile(message);
+  }
+
+  // スクリプト開始時にログファイルに区切りを入れる
+  function initializeLogFile() {
+    var separator =
+      "\n====================\nScript Execution Started: " +
+      SCRIPT_NAME +
+      " " +
+      SCRIPT_VERSION +
+      " at " +
+      new Date().toString() +
+      "\n====================\n";
+    try {
+      var logFile = File(DEBUG_LOG_FILE_PATH);
+      logFile.encoding = "UTF-8";
+      // 追記モードでファイルを開き、区切りを書き込む
+      if (logFile.open("a")) {
+        logFile.writeln(separator);
+        logFile.close();
+      } else {
+        try {
+          alert(
+            "デバッグログファイル初期化失敗(a): " +
+              logFile.error +
+              "\nPath: " +
+              DEBUG_LOG_FILE_PATH
+          );
+        } catch (e) {}
+      }
+    } catch (e) {
+      try {
+        alert(
+          "デバッグログファイル初期化エラー: " +
+            e.toString() +
+            "\nPath: " +
+            DEBUG_LOG_FILE_PATH
+        );
+      } catch (err) {}
+    }
+  }
+
+  // --- 書類フォルダ内のロゴ管理パスを定義 ---
+  var managedLogoDir = Folder(
+    Folder.myDocuments.fsName +
+      "/" +
+      LOGO_MANAGE_BASE_FOLDER_NAME +
+      "/" +
+      LOGO_MANAGE_SUBFOLDER_NAME
+  );
+  var managedLogoFile = File(
+    managedLogoDir.fsName + "/" + LOGO_TARGET_FILENAME
+  );
 
   var LAYER_SPECS = {
     timecode: {
@@ -55,11 +152,6 @@
     },
   };
 
-  var currentConfig = {
-    project_name: "",
-    logo_path: "",
-  };
-
   // --- UI構築 ---
   function buildUI(thisObj) {
     var myPanel =
@@ -89,38 +181,47 @@
     var stProjectName = panelProject.add(
       "statictext",
       undefined,
-      "プロジェクト名 (未入力時はファイル名):"
+      "プロジェクト表示名 (未入力時はファイル名):"
     );
     var editProjectName = panelProject.add("edittext", [0, 0, 280, 20], "");
-    editProjectName.helpTip = "表示するプロジェクト名。設定があれば自動入力。";
-    editProjectName.onChange = function () {
-      currentConfig.project_name = this.text;
-    };
+    editProjectName.helpTip =
+      "表示するプロジェクト名。設定があれば自動入力。変更は実行時に保存されます。";
 
     var panelLogo = myPanel.add("panel", undefined, "ロゴ設定");
     panelLogo.orientation = "column";
     panelLogo.alignChildren = "fill";
     panelLogo.spacing = 5;
     panelLogo.margins = 10;
-    panelLogo.add("statictext", undefined, "使用するロゴファイル:");
+    panelLogo.add(
+      "statictext",
+      undefined,
+      "使用するロゴ (書類フォルダ内で管理):"
+    );
     var grpLogoPath = panelLogo.add("group");
     grpLogoPath.orientation = "row";
     grpLogoPath.alignChildren = ["fill", "center"];
     var stLogoPath = grpLogoPath.add("statictext", [0, 0, 200, 20], "未設定", {
       truncate: "middle",
     });
-    stLogoPath.helpTip = "現在設定されているロゴファイル (管理下のパス)";
-    var btnBrowseLogo = grpLogoPath.add("button", undefined, "参照...");
-    btnBrowseLogo.helpTip = "ロゴファイル (AI形式) を選択してください";
+    stLogoPath.helpTip =
+      "管理下のロゴファイル (" + managedLogoFile.fsName + ") の状態";
+    var btnBrowseLogo = grpLogoPath.add("button", undefined, "参照して設定...");
+    btnBrowseLogo.helpTip =
+      "ロゴファイル (AI形式) を選択し、管理フォルダにコピーします";
+
+    // ロゴパス表示を更新する関数
+    function updateLogoPathDisplay() {
+      if (managedLogoFile.exists) {
+        stLogoPath.text = managedLogoFile.name + " (設定済)";
+        stLogoPath.helpTip = "管理下のロゴ: " + managedLogoFile.fsName;
+      } else {
+        stLogoPath.text = "未設定 (管理フォルダにロゴ無し)";
+        stLogoPath.helpTip =
+          "管理フォルダにロゴがありません: " + managedLogoFile.fsName;
+      }
+    }
 
     btnBrowseLogo.onClick = function () {
-      if (!hasSavedProject()) {
-        alert(
-          "プロジェクトが保存されていません。先にプロジェクトを保存してください。",
-          SCRIPT_NAME
-        );
-        return;
-      }
       var selectedFile = File.openDialog(
         "ロゴファイルを選択 (.ai)",
         "Adobe Illustrator:*.ai",
@@ -128,20 +229,28 @@
       );
       if (selectedFile) {
         try {
-          var managedPath = setAndCopyLogo(selectedFile);
-          if (managedPath) {
-            currentConfig.logo_path = managedPath;
-            stLogoPath.text = File(managedPath).name + " (設定済)";
-            saveConfig(currentConfig);
-            alert(
-              "ロゴを設定し、管理フォルダにコピーしました:\n" + managedPath
-            );
+          var copiedPath = setAndCopyLogo(selectedFile);
+          if (copiedPath) {
+            updateLogoPathDisplay(); // 表示を更新
+            try {
+              alert(
+                "ロゴを管理フォルダにコピーしました:\n" + copiedPath,
+                SCRIPT_NAME
+              );
+            } catch (e) {
+              writeLn("ALERT FAILED: ロゴコピー完了");
+            }
           }
         } catch (e) {
-          alert(
-            "ロゴの設定またはコピー中にエラーが発生しました:\n" + e.toString(),
-            SCRIPT_NAME
-          );
+          try {
+            alert(
+              "ロゴの設定またはコピー中にエラーが発生しました:\n" +
+                e.toString(),
+              SCRIPT_NAME
+            );
+          } catch (err) {
+            writeLn("ALERT FAILED: ロゴコピーエラー: " + e.toString());
+          }
         }
       }
     };
@@ -163,118 +272,215 @@
     };
 
     btnApply.onClick = function () {
-      var currentAvSources = getAvailableSources(getActiveComp());
+      writeLn("--- btnApply onClick START ---"); // ★Debug Log
       if (!hasSavedProject()) {
-        alert("プロジェクトが保存されていません。", SCRIPT_NAME);
+        try {
+          alert("プロジェクトが保存されていません。", SCRIPT_NAME);
+        } catch (e) {
+          writeLn("ALERT FAILED: プロジェクト未保存");
+        }
+        writeLn("btnApply onClick: Project not saved."); // ★Debug Log
         return;
       }
-      try {
-        var loaded = loadConfig();
-        if (loaded) currentConfig = loaded;
-        editProjectName.text = currentConfig.project_name || "";
-        stLogoPath.text = currentConfig.logo_path
-          ? File(currentConfig.logo_path).name + " (設定済)"
-          : "未設定";
-      } catch (e) {
-        alert("実行前に設定を再読み込みできませんでした:\n" + e.toString());
-      }
+      var currentAvSources = getAvailableSources(getActiveComp()); // 最新のソースリストを取得
+      writeLn(
+        "btnApply onClick: Got currentAvSources: " +
+          (currentAvSources ? currentAvSources.length : 0) +
+          " items"
+      ); // ★Debug Log
+
+      // ★追加: 実行前にロゴ表示のみ更新
+      updateLogoPathDisplay();
 
       var ac = getActiveComp();
       if (!ac) {
-        alert("アクティブなコンポジションがありません。", SCRIPT_NAME);
+        try {
+          alert("アクティブなコンポジションがありません。", SCRIPT_NAME);
+        } catch (e) {
+          writeLn("ALERT FAILED: アクティブコンポなし");
+        }
+        writeLn("btnApply onClick: No active comp."); // ★Debug Log
         return;
       }
-      if (!currentConfig.logo_path || !File(currentConfig.logo_path).exists) {
-        alert(
-          "ロゴファイルが設定されていないか、指定されたパスにファイルが存在しません。\nロゴ設定パネルでロゴファイルを設定してください。",
-          SCRIPT_NAME
-        );
+      // ロゴファイルの存在確認 (管理パス)
+      if (!managedLogoFile.exists) {
+        writeLn(
+          "btnApply onClick: Managed logo file not found: " +
+            managedLogoFile.fsName
+        ); // ★Debug Log
+        try {
+          alert(
+            "管理フォルダにロゴファイルが存在しません。\nロゴ設定パネルでロゴファイルを設定してください。\nパス: " +
+              managedLogoFile.fsName,
+            SCRIPT_NAME
+          );
+        } catch (e) {
+          writeLn("ALERT FAILED: 管理ロゴなし: " + managedLogoFile.fsName);
+        }
         return;
       }
       if (
         ddSource.items.length === 0 ||
         ddSource.selection == null ||
-        ddSource.selection.text === "ソースなし"
+        ddSource.selection.text === "ソースなし" ||
+        ddSource.selection.text === "プロジェクト未保存 または コンポなし" // 初期化時のメッセージもチェック
       ) {
-        alert("有効なソースが選択されていません。", SCRIPT_NAME);
+        writeLn("btnApply onClick: Invalid source selection in dropdown."); // ★Debug Log
+        try {
+          alert("有効なソースが選択されていません。", SCRIPT_NAME);
+        } catch (e) {
+          writeLn("ALERT FAILED: 有効ソース未選択");
+        }
         return;
       }
 
+      // ソース選択の有効性チェック
       var selIndex = ddSource.selection.index;
       if (
         !currentAvSources ||
         selIndex >= currentAvSources.length ||
         currentAvSources[selIndex].name !== ddSource.selection.text
       ) {
-        alert(
-          "ソースリストが古いか、選択が無効です。更新ボタンを押して再試行してください。",
-          SCRIPT_NAME
-        );
+        writeLn("btnApply onClick: Source selection mismatch or outdated."); // ★Debug Log
+        try {
+          alert(
+            "ソースリストが古いか、選択が無効です。\n更新ボタンを押して再試行してください。",
+            SCRIPT_NAME
+          );
+        } catch (e) {
+          writeLn("ALERT FAILED: ソースリスト古い/無効");
+        }
         return;
       }
       var pickedObj = currentAvSources[selIndex];
+      writeLn(
+        "btnApply onClick: Picked source: " +
+          (pickedObj ? pickedObj.name : "null")
+      ); // ★Debug Log
 
       if (!pickedObj || !pickedObj.source) {
-        alert("選択されたソース情報の取得に失敗しました。", SCRIPT_NAME);
+        writeLn("btnApply onClick: Failed to get source info from pickedObj."); // ★Debug Log
+        try {
+          alert("選択されたソース情報の取得に失敗しました。", SCRIPT_NAME);
+        } catch (e) {
+          writeLn("ALERT FAILED: ソース情報取得失敗");
+        }
         return;
       }
 
-      var projectFileNameForLayer =
-        currentConfig.project_name !== ""
-          ? currentConfig.project_name
-          : getAEProjectName();
+      // ★修正: 保存するプロジェクト名 (UIの現在の値を取得)
+      var projectNameToSave = editProjectName.text; // UIのedittextから直接取得
+      writeLn(
+        "btnApply onClick: Project name from UI to save: " + projectNameToSave
+      ); // ★Debug Log
 
+      // 表示用プロジェクト名決定 (UIの入力値を優先)
+      var projectFileNameForLayer =
+        projectNameToSave !== "" ? projectNameToSave : getAEProjectIdentifier(); // 未入力時はファイル名
+      writeLn(
+        "btnApply onClick: projectFileNameForLayer for display: " +
+          projectFileNameForLayer
+      ); // ★Debug Log
+
+      // ★修正: 現在のプロジェクトの設定を保存 (新しい方式)
       try {
-        saveConfig(currentConfig);
+        writeLn("btnApply onClick: Calling saveProjectNameToSettingsFile..."); // ★Debug Log
+        // 表示用に使った名前ではなく、UIに入力された名前（空文字列の可能性もある）を保存する
+        saveProjectNameToSettingsFile(projectNameToSave);
+        writeLn("プロジェクト設定 (.settings/[projectName]) を保存しました。");
       } catch (e) {
-        alert("設定の保存に失敗しました:\n" + e.toString(), SCRIPT_NAME);
+        writeLn("btnApply onClick: Error saving project name: " + e.toString()); // ★Debug Log
+        try {
+          alert("設定の保存に失敗しました:\n" + e.toString(), SCRIPT_NAME);
+        } catch (err) {
+          writeLn("ALERT FAILED: 設定保存失敗: " + e.toString());
+        }
+        // 保存失敗しても処理を続ける
       }
 
+      writeLn(
+        "btnApply onClick: Starting Undo Group and processComposition..."
+      ); // ★Debug Log
       app.beginUndoGroup(SCRIPT_NAME + ": 実行");
       try {
-        processComposition(
-          ac,
-          pickedObj,
-          projectFileNameForLayer,
-          currentConfig.logo_path
-        );
-        alert("処理が完了しました。", SCRIPT_NAME);
+        // managedLogoPath は引数から削除済
+        processComposition(ac, pickedObj, projectFileNameForLayer);
+        writeLn("btnApply onClick: processComposition completed."); // ★Debug Log
+        try {
+          alert("処理が完了しました。", SCRIPT_NAME);
+        } catch (e) {
+          writeLn("ALERT FAILED: 処理完了");
+        }
       } catch (e) {
-        alert(
-          "エラーが発生しました:\n" +
+        writeLn(
+          "btnApply onClick: Error during processComposition: " +
             e.toString() +
-            (e.line ? "\nLine: " + e.line : ""),
-          SCRIPT_NAME
-        );
+            (e.line ? " Line: " + e.line : "")
+        ); // ★Debug Log
+        try {
+          alert(
+            "エラーが発生しました:\n" +
+              e.toString() +
+              (e.line ? "\nLine: " + e.line : ""),
+            SCRIPT_NAME
+          );
+        } catch (err) {
+          writeLn(
+            "ALERT FAILED: 処理中エラー: " +
+              e.toString() +
+              (e.line ? " Line: " + e.line : "")
+          );
+        }
       } finally {
         app.endUndoGroup();
+        writeLn("--- btnApply onClick END ---"); // ★Debug Log
       }
     };
 
     function initializePanel() {
-      avSources = refreshSourceList(ddSource);
-      try {
-        var loadedSettings = loadConfig();
-        if (loadedSettings) {
-          currentConfig = loadedSettings;
-          editProjectName.text = currentConfig.project_name || "";
-          if (currentConfig.logo_path && File(currentConfig.logo_path).exists) {
-            stLogoPath.text = File(currentConfig.logo_path).name + " (設定済)";
-          } else {
-            stLogoPath.text = "未設定";
-            currentConfig.logo_path = "";
+      writeLn("--- initializePanel START ---"); // ★Debug Log
+      if (hasSavedProject()) {
+        writeLn("initializePanel: Project is saved."); // ★Debug Log
+        try {
+          // ★修正: 新しい方式でプロジェクト名を読み込み
+          var loadedProjectName = loadProjectNameFromSettingsFile();
+          writeLn("initializePanel: Loaded project name: " + loadedProjectName); // ★Debug Log
+          editProjectName.text = loadedProjectName || ""; // UIに直接ロード
+        } catch (e) {
+          writeLn(
+            "initializePanel: Error loading project name: " + e.toString()
+          ); // ★Debug Log
+          try {
+            alert(
+              "プロジェクト名の読み込み中にエラーが発生しました:\n" +
+                e.toString(),
+              SCRIPT_NAME
+            );
+          } catch (err) {
+            writeLn(
+              "ALERT FAILED: プロジェクト名読み込みエラー: " + e.toString()
+            );
           }
-        } else {
-          stLogoPath.text = "未設定";
         }
-      } catch (e) {
-        alert(
-          "設定の読み込み中にエラーが発生しました:\n" + e.toString(),
-          SCRIPT_NAME
-        );
-        stLogoPath.text = "読込エラー";
+        avSources = refreshSourceList(ddSource);
+        btnBrowseLogo.enabled = true; // プロジェクトが保存されていればロゴ参照は可能
+      } else {
+        writeLn(
+          "initializePanel: Project is NOT saved. Disabling UI elements."
+        ); // ★Debug Log
+        // プロジェクト未保存時の初期状態
+        editProjectName.text = "";
+        editProjectName.enabled = false;
+        btnBrowseLogo.enabled = false; // ロゴ参照も不可とする（設定保存場所がないため）
+        ddSource.removeAll();
+        ddSource.add("item", "プロジェクト未保存 または コンポなし");
+        ddSource.selection = 0;
+        ddSource.enabled = false;
+        btnApply.enabled = false;
+        btnRefresh.enabled = false;
       }
-      btnBrowseLogo.enabled = hasSavedProject();
+      updateLogoPathDisplay(); // ロゴの状態を表示
+      writeLn("--- initializePanel END ---"); // ★Debug Log
     }
 
     function getAvailableSources(comp) {
@@ -282,11 +488,25 @@
       if (!comp) return sources;
       for (var i = 1; i <= comp.numLayers; i++) {
         var lyr = comp.layer(i);
-        if (lyr instanceof AVLayer && lyr.source && lyr.source !== null) {
+        // AVLayer かつ 有効な source を持つレイヤーを対象とする
+        // かつ、それがプリコンポーズ(_check-data_*) や ロゴフッテージでないこと
+        if (
+          lyr instanceof AVLayer &&
+          lyr.source &&
+          lyr.source !== null &&
+          lyr.source.name !== LOGO_FOOTAGE_NAME &&
+          !(
+            lyr.source instanceof CompItem &&
+            lyr.source.name.indexOf(PRECOMP_PREFIX) === 0
+          )
+        ) {
           var s = lyr.source;
-          if (s instanceof CompItem && s.name.indexOf(PRECOMP_PREFIX) !== 0) {
+          // FootageItem の場合は isStill でないこと（動画・シーケンスのみ）
+          // CompItem の場合はそのまま追加
+          if (s instanceof CompItem) {
             sources.push({ source: s, type: "comp", name: s.name });
-          } else if (s instanceof FootageItem && s.name !== LOGO_FOOTAGE_NAME) {
+          } else if (s instanceof FootageItem) {
+            // FootageItemの場合、mainSourceが存在し、かつisStillでないことを確認
             if (s.mainSource && !s.mainSource.isStill) {
               sources.push({ source: s, type: "footage", name: s.name });
             }
@@ -297,33 +517,58 @@
     }
 
     function refreshSourceList(dropdown) {
+      writeLn("--- refreshSourceList START ---"); // ★Debug Log
       dropdown.removeAll();
       var currentSources = [];
       var ac = getActiveComp();
-      var enableUI = hasSavedProject() && ac;
-      btnBrowseLogo.enabled = enableUI;
+      var projectSaved = hasSavedProject();
+      writeLn(
+        "refreshSourceList: projectSaved=" +
+          projectSaved +
+          ", activeComp=" +
+          (ac ? ac.name : "null")
+      ); // ★Debug Log
+
+      // UI要素の有効/無効状態設定
+      var enableUI = projectSaved && ac;
       ddSource.enabled = enableUI;
       btnApply.enabled = enableUI;
+      editProjectName.enabled = projectSaved; // プロジェクト名入力はプロジェクト保存が条件
+      btnBrowseLogo.enabled = true; // ロゴ参照はプロジェクト保存状態に依存しない
+      btnRefresh.enabled = projectSaved; // 更新ボタンもプロジェクト保存が条件
 
-      if (!enableUI) {
-        dropdown.add("item", "プロジェクト未保存 または コンポなし");
+      if (!projectSaved) {
+        dropdown.add("item", "プロジェクト未保存");
         dropdown.selection = 0;
+        btnApply.enabled = false; // 実行不可
+        writeLn("refreshSourceList: Project not saved state."); // ★Debug Log
+      } else if (!ac) {
+        dropdown.add("item", "アクティブなコンポなし");
+        dropdown.selection = 0;
+        btnApply.enabled = false; // 実行不可
+        writeLn("refreshSourceList: No active comp state."); // ★Debug Log
       } else {
         currentSources = getAvailableSources(ac);
+        writeLn(
+          "refreshSourceList: Found " +
+            currentSources.length +
+            " available sources."
+        ); // ★Debug Log
         if (currentSources.length === 0) {
-          dropdown.add("item", "ソースなし");
+          dropdown.add("item", "有効なソースレイヤーなし");
           dropdown.selection = 0;
-          dropdown.enabled = false;
-          btnApply.enabled = false;
+          btnApply.enabled = false; // 実行不可
+          writeLn("refreshSourceList: No valid source layers found state."); // ★Debug Log
         } else {
           for (var k = 0; k < currentSources.length; k++) {
             dropdown.add("item", currentSources[k].name);
           }
           dropdown.selection = 0;
-          dropdown.enabled = true;
-          btnApply.enabled = true;
+          btnApply.enabled = true; // 実行可能
+          writeLn("refreshSourceList: Populated dropdown. Selection index 0."); // ★Debug Log
         }
       }
+      writeLn("--- refreshSourceList END ---"); // ★Debug Log
       return currentSources;
     }
 
@@ -339,6 +584,7 @@
     return myPanel;
   }
 
+  // ロゴファイルを指定された管理フォルダ（書類内）にコピーする関数
   function setAndCopyLogo(sourceFile) {
     if (!sourceFile || !sourceFile.exists) {
       throw new Error("指定されたロゴファイルが見つかりません。");
@@ -348,32 +594,43 @@
         "ロゴファイルは Adobe Illustrator (.ai) 形式である必要があります。"
       );
     }
-    var proj = app.project;
-    if (!proj || !proj.file) {
-      throw new Error("プロジェクトが保存されていません。");
-    }
-    var projDir = proj.file.parent;
-    var settingsDir = Folder(projDir.fsName + "/" + SETTINGS_SUBDIR);
 
-    if (!settingsDir.exists) {
-      if (!settingsDir.create()) {
+    // 管理用ベースフォルダ、サブフォルダの存在確認と作成
+    var baseDir = Folder(
+      Folder.myDocuments.fsName + "/" + LOGO_MANAGE_BASE_FOLDER_NAME
+    );
+    if (!baseDir.exists) {
+      if (!baseDir.create()) {
         throw new Error(
-          "設定ディレクトリの作成に失敗しました: " + settingsDir.fsName
+          "書類フォルダ内にベースディレクトリを作成できませんでした: " +
+            baseDir.fsName
         );
       }
-      writeLn("設定ディレクトリを作成しました: " + settingsDir.fsName);
+      writeLn("ロゴ管理用ベースディレクトリを作成しました: " + baseDir.fsName);
     }
 
-    var targetFile = File(settingsDir.fsName + "/" + LOGO_TARGET_FILENAME);
+    var targetDir = Folder(baseDir.fsName + "/" + LOGO_MANAGE_SUBFOLDER_NAME);
+    if (!targetDir.exists) {
+      if (!targetDir.create()) {
+        throw new Error(
+          "ロゴ管理用サブディレクトリを作成できませんでした: " +
+            targetDir.fsName
+        );
+      }
+      writeLn("ロゴ管理用サブディレクトリを作成しました: " + targetDir.fsName);
+    }
 
+    var targetFile = File(targetDir.fsName + "/" + LOGO_TARGET_FILENAME);
+
+    // 既存ファイルがあっても上書きコピーする
     if (sourceFile.copy(targetFile.fsName)) {
       writeLn(
-        "ロゴファイルをコピーしました: " +
+        "ロゴファイルを管理フォルダにコピーしました: " +
           sourceFile.fsName +
           " -> " +
           targetFile.fsName
       );
-      return targetFile.fsName;
+      return targetFile.fsName; // コピー後のパスを返す
     } else {
       throw new Error(
         "ロゴファイルのコピーに失敗しました。\nコピー元: " +
@@ -387,22 +644,36 @@
   }
 
   // --- メイン処理関数 ---
-  function processComposition(
-    activeComp,
-    pickedObj,
-    projectFileName,
-    managedLogoPath
-  ) {
-    if (!activeComp) return;
+  // managedLogoPath 引数を削除し、グローバルの managedLogoFile を使用
+  function processComposition(activeComp, pickedObj, projectFileName) {
+    writeLn("--- processComposition START ---"); // ★Debug Log
+    if (!activeComp) {
+      writeLn("processComposition: No activeComp. Returning."); // ★Debug Log
+      return;
+    }
     if (!pickedObj || !pickedObj.source) {
+      writeLn("processComposition: Invalid pickedObj or source."); // ★Debug Log
       throw new Error("処理に必要なソース情報がありません。");
     }
-    if (!managedLogoPath || !File(managedLogoPath).exists) {
+    // 管理下のロゴファイルの存在を再確認
+    if (!managedLogoFile.exists) {
+      writeLn(
+        "processComposition: Managed logo file does not exist: " +
+          managedLogoFile.fsName
+      ); // ★Debug Log
       throw new Error(
-        "管理下のロゴファイルパスが無効か、ファイルが存在しません:\n" +
-          managedLogoPath
+        "管理下のロゴファイルが存在しません:\n" + managedLogoFile.fsName
       );
     }
+    writeLn(
+      "processComposition: Processing comp '" +
+        activeComp.name +
+        "' with source '" +
+        pickedObj.name +
+        "' and projectFileName '" +
+        projectFileName +
+        "'"
+    ); // ★Debug Log
 
     var sourceItem = pickedObj.source;
     var sourceLayerInfo = { index: -1, name: "" };
@@ -412,13 +683,19 @@
     var foundAndRemovedSource = false;
     for (var i = activeComp.numLayers; i >= 1; i--) {
       var currentLayer = activeComp.layer(i);
+      var isManagedLayer = false;
+      // 既存のテキストレイヤー、ロゴレイヤー、またはプリコンプレイヤーかチェック
       if (
         LAYER_SPECS[currentLayer.name] ||
         currentLayer.name === LOGO_LAYER_NAME ||
         (currentLayer.source &&
           currentLayer.source instanceof CompItem &&
-          currentLayer.source.name.indexOf(PRECOMP_PREFIX) === 0) // プリコンプレイヤーの判定を修正
+          currentLayer.source.name.indexOf(PRECOMP_PREFIX) === 0)
       ) {
+        isManagedLayer = true;
+      }
+
+      if (isManagedLayer) {
         try {
           writeLn(
             "  削除対象レイヤー発見: " +
@@ -439,6 +716,7 @@
           );
         }
       } else if (
+        // 管理対象外 かつ 今回選択されたソースと同じAVLayerかチェック
         currentLayer instanceof AVLayer &&
         currentLayer.source &&
         currentLayer.source === sourceItem
@@ -451,8 +729,9 @@
               currentLayer.index +
               ")"
           );
+          // 最初に見つかったソースレイヤーの情報を保持
           if (!foundAndRemovedSource) {
-            sourceLayerInfo.index = currentLayer.index;
+            sourceLayerInfo.index = currentLayer.index; // 位置復元は行わないが、名前は保持
             sourceLayerInfo.name = currentLayer.name;
           }
           if (currentLayer.locked) currentLayer.locked = false;
@@ -470,19 +749,26 @@
       }
     }
     if (!foundAndRemovedSource)
-      writeLn("既存のソースレイヤーは見つかりませんでした。");
+      writeLn("今回選択されたソースと同じ既存レイヤーは見つかりませんでした。");
     writeLn("--- 既存レイヤー検索・削除終了 ---");
 
     // --- 0.5 コンポジションサイズ変更 ---
     if (activeComp.width === 1920 && activeComp.height === 1080) {
       activeComp.height = 1150;
       writeLn("コンポジションの高さを 1150px に変更しました。");
+    } else if (activeComp.width !== 1920 || activeComp.height !== 1150) {
+      writeLn(
+        "警告: コンポジションサイズが予期される値 (1920x1080 または 1920x1150) ではありません (" +
+          activeComp.width +
+          "x" +
+          activeComp.height +
+          "). サイズ変更はスキップします。"
+      );
     }
 
     // --- 1. ロゴフッテージの準備 (インポートまたは置換) とフォルダ移動 ---
     writeLn("--- ロゴフッテージ準備開始 ---");
     var logoFootage = null;
-    var managedLogoFile = File(managedLogoPath);
 
     try {
       var existingLogoFootage = findItemByName(LOGO_FOOTAGE_NAME);
@@ -493,38 +779,26 @@
             LOGO_FOOTAGE_NAME +
             "' を発見。ソースを置換します。"
         );
-        // 既存のフッテージが正しいフォルダにあるか確認
-        var expectedParentPath =
-          PRECOMP_FOLDER_NAME + "/" + FOOTAGE_FOLDER_NAME;
-        var currentParentFolder = getItemFolderPath(existingLogoFootage);
-        if (currentParentFolder !== expectedParentPath) {
-          writeLn(
-            "  フッテージが期待されるフォルダ (" +
-              expectedParentPath +
-              ") にありません。移動します。"
-          );
-          // この後の処理で移動させるのでここではログのみ
-        } else {
-          writeLn(
-            "  フッテージは既に正しいフォルダ (" +
-              expectedParentPath +
-              ") にあります。"
-          );
-        }
-        existingLogoFootage.replaceSource(managedLogoFile, false);
+        existingLogoFootage.replaceSource(managedLogoFile, false); // managedLogoFile を使用
         logoFootage = existingLogoFootage;
-        writeLn("  フッテージソースを置換しました: " + managedLogoFile.fsName);
+        writeLn(
+          "  フッテージソースを管理下のロゴで置換しました: " +
+            managedLogoFile.fsName
+        );
       } else {
-        // ★★★★★★★ 要件3: 既存フッテージがない場合のみインポート ★★★★★★★
         writeLn(
           "ロゴフッテージ '" +
             LOGO_FOOTAGE_NAME +
             "' が見つからないため、新規にインポートします。"
         );
-        var importOptions = new ImportOptions(managedLogoFile);
+        var importOptions = new ImportOptions(managedLogoFile); // managedLogoFile を使用
         logoFootage = app.project.importFile(importOptions);
         if (!logoFootage) {
-          throw new Error("ロゴファイルのインポートに失敗しました。");
+          throw new Error(
+            "管理下のロゴファイル (" +
+              managedLogoFile.fsName +
+              ") のインポートに失敗しました。"
+          );
         }
         logoFootage.name = LOGO_FOOTAGE_NAME;
         writeLn(
@@ -534,6 +808,9 @@
         );
       }
     } catch (e) {
+      writeLn(
+        "processComposition: Error during logo footage prep: " + e.toString()
+      ); // ★Debug Log
       throw new Error(
         "ロゴフッテージの準備（インポート/置換）中にエラーが発生しました:\n" +
           e.toString()
@@ -541,68 +818,98 @@
     }
 
     if (!logoFootage || !(logoFootage instanceof FootageItem)) {
+      writeLn("processComposition: Failed to get valid logoFootage item."); // ★Debug Log
       throw new Error(
         "ロゴフッテージの準備に失敗しました。有効なフッテージアイテムを取得できませんでした。"
       );
     }
 
-    // ★★★★★★★ 要件2: ロゴフッテージを _check-data/footage フォルダに移動 ★★★★★★★
+    // ロゴフッテージを AE プロジェクト内の _check-data/footage フォルダに移動
     try {
       var checkDataFolder = findOrCreateFolder(PRECOMP_FOLDER_NAME);
-      if (!checkDataFolder)
+      if (!checkDataFolder) {
+        writeLn(
+          "processComposition: Failed to find/create checkDataFolder: " +
+            PRECOMP_FOLDER_NAME
+        ); // ★Debug Log
         throw new Error(
-          "'" + PRECOMP_FOLDER_NAME + "' フォルダの取得/作成に失敗。"
+          "AEプロジェクトフォルダ '" +
+            PRECOMP_FOLDER_NAME +
+            "' の取得/作成に失敗。"
         );
+      }
 
-      var footageFolder = findOrCreateFolder(
+      var footageFolderInAE = findOrCreateFolder(
         FOOTAGE_FOLDER_NAME,
         checkDataFolder
-      ); // 親フォルダを指定
-      if (!footageFolder)
-        throw new Error(
-          "'" + FOOTAGE_FOLDER_NAME + "' フォルダの取得/作成に失敗。"
-        );
-
-      // 既に正しいフォルダにあるか再確認（replaceSourceの場合も考慮）
-      if (logoFootage.parentFolder !== footageFolder) {
-        logoFootage.parentFolder = footageFolder;
+      );
+      if (!footageFolderInAE) {
         writeLn(
-          "  ロゴフッテージを '" +
+          "processComposition: Failed to find/create footageFolderInAE: " +
+            FOOTAGE_FOLDER_NAME
+        ); // ★Debug Log
+        throw new Error(
+          "AEプロジェクトフォルダ '" +
+            FOOTAGE_FOLDER_NAME +
+            "' の取得/作成に失敗。"
+        );
+      }
+
+      if (logoFootage.parentFolder !== footageFolderInAE) {
+        logoFootage.parentFolder = footageFolderInAE;
+        writeLn(
+          "  ロゴフッテージをAEプロジェクト内フォルダ '" +
             PRECOMP_FOLDER_NAME +
             "/" +
             FOOTAGE_FOLDER_NAME +
-            "' フォルダに移動しました。"
+            "' に移動しました。"
         );
       }
     } catch (e) {
-      writeLn("警告: ロゴフッテージのフォルダ移動中にエラー: " + e.toString());
-      // エラーが発生しても処理は続行させる（ルートに残るだけ）
+      writeLn(
+        "警告: ロゴフッテージのAEプロジェクト内フォルダ移動中にエラー: " +
+          e.toString()
+      );
     }
     writeLn("--- ロゴフッテージ準備完了 ---");
 
     // --- 2. テキストレイヤーの生成・更新 ---
+    writeLn("--- テキストレイヤー生成開始 ---");
     var textLayers = {};
     var textLayerNames = [];
     var layerName;
     for (layerName in LAYER_SPECS) {
       if (!LAYER_SPECS.hasOwnProperty(layerName)) continue;
+      writeLn("  Creating text layer: " + layerName); // ★Debug Log
       var spec = LAYER_SPECS[layerName];
       textLayers[layerName] = createTextLayer(activeComp, layerName, spec);
       if (!textLayers[layerName]) {
+        writeLn(
+          "processComposition: Failed to create text layer: " + layerName
+        ); // ★Debug Log
         throw new Error("テキストレイヤー '" + layerName + "' の作成失敗。");
       }
       textLayerNames.push(layerName);
       var targetLayer = textLayers[layerName];
+      // トランスフォーム設定
       if (targetLayer.property("Position")) {
         targetLayer.property("Position").setValue(spec.pos);
       }
       if (targetLayer.property("Anchor Point")) {
         targetLayer.property("Anchor Point").setValue(spec.ap);
       }
+      // エクスプレッション設定
       if (spec.expression && targetLayer.property("Source Text")) {
         try {
           targetLayer.property("Source Text").expression = spec.expression;
+          writeLn("    Set expression for: " + layerName); // ★Debug Log
         } catch (e) {
+          writeLn(
+            "processComposition: Failed to set expression for layer '" +
+              layerName +
+              "': " +
+              e.toString()
+          ); // ★Debug Log
           throw new Error(
             "レイヤー '" +
               layerName +
@@ -612,7 +919,10 @@
         }
       }
     }
+    // エクスプレッションが設定されていないテキストレイヤーの内容を設定
+    writeLn("  Setting text layer contents..."); // ★Debug Log
     setTextLayerContents(activeComp, textLayers, pickedObj, projectFileName);
+    writeLn("--- テキストレイヤー生成完了 ---");
 
     // --- 3. ロゴレイヤーをアクティブコンポに追加 ---
     writeLn("--- ロゴレイヤー追加開始 ---");
@@ -623,6 +933,7 @@
       logoLayer.name = LOGO_LAYER_NAME;
       writeLn("ロゴレイヤーを追加しました: " + logoLayer.name);
     } catch (e) {
+      writeLn("processComposition: Error adding logo layer: " + e.toString()); // ★Debug Log
       throw new Error("ロゴレイヤー追加中にエラー発生:\n" + e.toString());
     }
     writeLn("--- ロゴレイヤー追加終了 ---");
@@ -647,15 +958,19 @@
     writeLn("--- ロゴレイヤートランスフォーム設定終了 ---");
 
     // --- 5. プリコンポーズ処理 (テキストレイヤー + ロゴレイヤー) とフォルダ移動 ---
+    writeLn("--- プリコンポーズ処理開始 ---");
     var precompName = PRECOMP_PREFIX + activeComp.name;
     var layersToPrecomposeIndices = [];
+    // アクティブコンポのレイヤーを再度チェックして対象インデックスを取得
     for (var i = 1; i <= activeComp.numLayers; i++) {
       var layer = activeComp.layer(i);
-      // textLayersオブジェクトにキーとして存在するか、またはロゴレイヤーか
+      // textLayers オブジェクトにキーとして存在するか（=今回作成したテキストレイヤー）、
+      // または今回作成したロゴレイヤーか
       if (textLayers[layer.name] || layer === logoLayer) {
         layersToPrecomposeIndices.push(layer.index);
       }
     }
+
     writeLn(
       "プリコンポーズ対象レイヤーインデックス: " +
         layersToPrecomposeIndices.join(", ")
@@ -664,7 +979,8 @@
     var precompLayer = null;
     if (layersToPrecomposeIndices.length > 0) {
       try {
-        // 既存の同名プリコンポーズを検索して削除（必要に応じて）
+        writeLn("  Precomposing layers..."); // ★Debug Log
+        // 既存の同名プリコンポーズを検索して削除
         var existingPreComp = findItemByName(precompName);
         if (existingPreComp && existingPreComp instanceof CompItem) {
           writeLn("既存のプリコンポーズ '" + precompName + "' を削除します。");
@@ -674,10 +990,10 @@
             writeLn(
               "警告: 既存プリコンポーズの削除に失敗: " + removeError.toString()
             );
-            // 続行を試みる
           }
         }
 
+        // プリコンポーズ実行
         newComp = activeComp.layers.precompose(
           layersToPrecomposeIndices,
           precompName,
@@ -685,45 +1001,49 @@
         );
         if (newComp) {
           writeLn("プリコンポーズ成功 (テキスト+ロゴ): " + newComp.name);
-          precompLayer = findLayerByName(activeComp, precompName); // プリコンポーズされたレイヤーを取得
+          // プリコンポーズによって生成された新しいレイヤーを取得
+          precompLayer = findLayerByName(activeComp, precompName);
+          if (!precompLayer) {
+            writeLn("警告: プリコンポーズ後のレイヤーが見つかりません。");
+          }
 
-          // ★★★★★★★ 要件1: プリコンポーズを _check-data フォルダに移動 ★★★★★★★
+          // プリコンポーズアイテムを AE プロジェクト内の _check-data フォルダに移動
           try {
             var precompTargetFolder = findOrCreateFolder(PRECOMP_FOLDER_NAME);
-            if (!precompTargetFolder)
+            if (!precompTargetFolder) {
+              writeLn(
+                "processComposition: Failed to find/create precompTargetFolder: " +
+                  PRECOMP_FOLDER_NAME
+              ); // ★Debug Log
               throw new Error(
-                "'" + PRECOMP_FOLDER_NAME + "' フォルダの取得/作成に失敗。"
+                "AEプロジェクトフォルダ '" +
+                  PRECOMP_FOLDER_NAME +
+                  "' の取得/作成に失敗。"
               );
+            }
 
             if (newComp.parentFolder !== precompTargetFolder) {
               newComp.parentFolder = precompTargetFolder;
               writeLn(
-                "  プリコンポーズ '" +
+                "  プリコンポーズアイテム '" +
                   newComp.name +
-                  "' を '" +
+                  "' をAEプロジェクト内フォルダ '" +
                   PRECOMP_FOLDER_NAME +
-                  "' フォルダに移動しました。"
-              );
-            } else {
-              writeLn(
-                "  プリコンポーズ '" +
-                  newComp.name +
-                  "' は既に '" +
-                  PRECOMP_FOLDER_NAME +
-                  "' フォルダにあります。"
+                  "' に移動しました。"
               );
             }
           } catch (folderError) {
             writeLn(
-              "警告: プリコンポーズのフォルダ移動中にエラー: " +
+              "警告: プリコンポーズアイテムのフォルダ移動中にエラー: " +
                 folderError.toString()
             );
-            // エラーが発生しても処理は続行（ルートに残る）
           }
         } else {
+          writeLn("processComposition: Precompose returned null."); // ★Debug Log
           throw new Error("プリコンポーズ作成失敗(null)。");
         }
       } catch (e) {
+        writeLn("processComposition: Error during precompose: " + e.toString()); // ★Debug Log
         throw new Error(
           "プリコンポーズ中にエラー発生:\n対象インデックス: " +
             layersToPrecomposeIndices.join(",") +
@@ -734,35 +1054,45 @@
     } else {
       writeLn("プリコンポーズ対象レイヤーが見つかりませんでした。");
     }
+    writeLn("--- プリコンポーズ処理終了 ---");
 
     // --- 6. ソースレイヤーを再度追加し、設定 ---
     writeLn("--- ソースレイヤー再追加処理開始 ---");
     var reAddedSourceLayer = null;
     try {
       reAddedSourceLayer = activeComp.layers.add(sourceItem);
-      if (!reAddedSourceLayer || !reAddedSourceLayer.isValid)
+      if (!reAddedSourceLayer || !reAddedSourceLayer.isValid) {
+        writeLn("processComposition: Failed to re-add source layer."); // ★Debug Log
         throw new Error("ソースレイヤーの再追加失敗。");
+      }
       writeLn("ソースレイヤーを再追加しました: " + reAddedSourceLayer.name);
+
+      // 保持していた元のレイヤー名があれば再設定
       if (sourceLayerInfo.name !== "") {
         reAddedSourceLayer.name = sourceLayerInfo.name;
         writeLn("  名前を '" + sourceLayerInfo.name + "' に再設定。");
       }
+
+      // Y座標を中央に配置 (高さ 1150 を想定)
       var posProp = reAddedSourceLayer.property("Position");
       if (posProp && posProp.canSetValue) {
         var currentPos = posProp.value;
-        posProp.setValue([currentPos[0], 575]); // 1150 / 2 = 575 (Yセンター想定)
+        posProp.setValue([currentPos[0], 575]); // 1150 / 2 = 575
         writeLn("  Y座標を 575 に設定。");
       } else {
         writeLn("警告: 再追加したソースレイヤーの位置を設定できません。");
       }
 
-      // ソースレイヤーをプリコンポーズの下に移動
+      // レイヤー順序をプリコンポーズレイヤーの直下に移動
       if (precompLayer && precompLayer.isValid) {
         reAddedSourceLayer.moveAfter(precompLayer);
-        writeLn("  レイヤー順序をプリコンポーズの下に移動。");
+        writeLn("  レイヤー順序をプリコンポーズレイヤーの下に移動。");
       } else {
+        // プリコンポーズレイヤーが見つからない場合は、とりあえず最下層へ
         reAddedSourceLayer.moveToEnd();
-        writeLn("  レイヤー順序を最下層に移動。");
+        writeLn(
+          "警告: プリコンポーズレイヤーが見つからないため、最下層に移動。"
+        );
       }
     } catch (e) {
       writeLn(
@@ -770,6 +1100,7 @@
       );
     }
     writeLn("--- ソースレイヤー再追加処理終了 ---");
+    writeLn("--- processComposition END ---"); // ★Debug Log
   } // processComposition 終了
 
   // --- テキストレイヤー関連ヘルパー ---
@@ -779,12 +1110,23 @@
       textLayer = comp.layers.addText("");
       textLayer.name = layerName;
     } catch (e) {
+      writeLn(
+        "createTextLayer: Failed to add text layer '" +
+          layerName +
+          "': " +
+          e.toString()
+      ); // ★Debug Log
       throw new Error(
         "テキストレイヤー追加失敗 ('" + layerName + "')。\n" + e.toString()
       );
     }
     var textProp = textLayer.property("Source Text");
     if (!textProp) {
+      writeLn(
+        "createTextLayer: Failed to get Source Text property for '" +
+          layerName +
+          "'"
+      ); // ★Debug Log
       throw new Error("Source Textプロパティ取得失敗 ('" + layerName + "')。");
     }
     var textDocument = textProp.value;
@@ -794,24 +1136,39 @@
       if (spec.justification != null) {
         textDocument.justification = spec.justification;
       } else {
-        textDocument.justification = ParagraphJustification.LEFT_JUSTIFY;
+        textDocument.justification = ParagraphJustification.LEFT_JUSTIFY; // デフォルト
       }
       textProp.setValue(textDocument);
     } catch (e) {
-      alert(
-        "フォント/揃え設定失敗 ('" +
+      writeLn(
+        "createTextLayer: Failed to set font/justification for '" +
           layerName +
-          "')。\nFont: '" +
-          FONT_POSTSCRIPT_NAME +
-          "'\n" +
-          e.toString() +
-          "\nフォントがインストールされているか確認してください。",
-        SCRIPT_NAME
-      );
+          "': " +
+          e.toString()
+      ); // ★Debug Log
+      try {
+        alert(
+          "フォント/揃え設定失敗 ('" +
+            layerName +
+            "')。\nFont: '" +
+            FONT_POSTSCRIPT_NAME +
+            "'\nError: " +
+            e.toString() +
+            "\nフォントがインストールされているか確認してください。",
+          SCRIPT_NAME
+        );
+      } catch (err) {
+        writeLn("ALERT FAILED: フォント設定失敗 " + layerName);
+      }
       try {
         textLayer.remove();
-      } catch (err) {}
-      return null;
+      } catch (removeErr) {
+        writeLn(
+          "createTextLayer: Failed to remove layer after font error: " +
+            removeErr.toString()
+        ); // ★Debug Log
+      } // 削除失敗は無視
+      return null; // 作成失敗を示す
     }
     return textLayer;
   }
@@ -822,43 +1179,58 @@
     pickedObj,
     projectFileName
   ) {
+    writeLn("--- setTextLayerContents START ---"); // ★Debug Log
     var layerName;
+    var sourceTextProp;
+
+    // 現在日時
     layerName = "current_info";
-    if (
-      textLayers[layerName] &&
-      textLayers[layerName].property("Source Text") &&
-      !textLayers[layerName].property("Source Text").expressionEnabled
-    ) {
-      textLayers[layerName]
-        .property("Source Text")
-        .setValue(createDateTimeString());
+    sourceTextProp = textLayers[layerName]
+      ? textLayers[layerName].property("Source Text")
+      : null;
+    if (sourceTextProp && !sourceTextProp.expressionEnabled) {
+      var dateTimeStr = createDateTimeString();
+      writeLn("  Setting " + layerName + " to: " + dateTimeStr); // ★Debug Log
+      sourceTextProp.setValue(dateTimeStr);
     }
+
+    // コンポジション名
     layerName = "comp_name";
-    if (
-      textLayers[layerName] &&
-      textLayers[layerName].property("Source Text") &&
-      !textLayers[layerName].property("Source Text").expressionEnabled
-    ) {
-      textLayers[layerName].property("Source Text").setValue(activeComp.name);
+    sourceTextProp = textLayers[layerName]
+      ? textLayers[layerName].property("Source Text")
+      : null;
+    if (sourceTextProp && !sourceTextProp.expressionEnabled) {
+      writeLn("  Setting " + layerName + " to: " + activeComp.name); // ★Debug Log
+      sourceTextProp.setValue(activeComp.name);
     }
+
+    // プロジェクト表示名
     layerName = "project_name";
-    if (
-      textLayers[layerName] &&
-      textLayers[layerName].property("Source Text") &&
-      !textLayers[layerName].property("Source Text").expressionEnabled
-    ) {
-      textLayers[layerName].property("Source Text").setValue(projectFileName);
+    sourceTextProp = textLayers[layerName]
+      ? textLayers[layerName].property("Source Text")
+      : null;
+    if (sourceTextProp && !sourceTextProp.expressionEnabled) {
+      var projNameToSet = projectFileName || getAEProjectIdentifier();
+      writeLn("  Setting " + layerName + " to: " + projNameToSet); // ★Debug Log
+      sourceTextProp.setValue(projNameToSet); // 設定値がなければファイル名
     }
+
+    // コンポジション情報（ソース情報）
     layerName = "comp_info";
-    if (
-      textLayers[layerName] &&
-      textLayers[layerName].property("Source Text") &&
-      !textLayers[layerName].property("Source Text").expressionEnabled
-    ) {
+    sourceTextProp = textLayers[layerName]
+      ? textLayers[layerName].property("Source Text")
+      : null;
+    if (sourceTextProp && !sourceTextProp.expressionEnabled) {
       var compInfoString = "N/A";
       try {
         if (pickedObj && pickedObj.source) {
           var sourceItem = pickedObj.source;
+          writeLn(
+            "  Getting info for source: " +
+              sourceItem.name +
+              ", Type: " +
+              (sourceItem instanceof CompItem ? "Comp" : "Footage")
+          ); // ★Debug Log
           var fps = sourceItem.frameRate || 0;
           var dur = sourceItem.duration || 0;
           var totalFrames =
@@ -871,20 +1243,39 @@
               : convertSecondsToTC(dur, fps);
           var framesPadded = padDigits(totalFrames, 5);
           var sourceName = pickedObj.name || "";
+          writeLn(
+            "    Source Info: fps=" +
+              fps +
+              ", dur=" +
+              dur +
+              ", totalFrames=" +
+              totalFrames +
+              ", tc=" +
+              tc
+          ); // ★Debug Log
+
+          // コンポかフッテージかで表示内容を少し変える
           if (pickedObj.type === "comp") {
+            // コンポの場合は尺情報のみ
             compInfoString = "TC/Fm: " + tc + "/" + framesPadded;
           } else {
+            // フッテージの場合は名前も表示（長すぎる場合は省略）
             if (sourceName.length > 30) {
               sourceName = sourceName.substring(0, 27) + "...";
             }
             compInfoString = sourceName + " TC/Fm: " + tc + "/" + framesPadded;
           }
+        } else {
+          writeLn("  Source info unavailable (pickedObj or source is null)."); // ★Debug Log
         }
       } catch (e) {
         compInfoString = "Error getting info";
+        writeLn("Comp Info 取得エラー: " + e.toString());
       }
-      textLayers[layerName].property("Source Text").setValue(compInfoString);
+      writeLn("  Setting " + layerName + " to: " + compInfoString); // ★Debug Log
+      sourceTextProp.setValue(compInfoString);
     }
+    writeLn("--- setTextLayerContents END ---"); // ★Debug Log
   }
 
   // --- After Effects 一般ヘルパー ---
@@ -897,59 +1288,68 @@
     }
   }
   function hasSavedProject() {
-    return app.project && app.project.file !== null;
+    var saved = app.project && app.project.file !== null;
+    // writeLn("hasSavedProject: Returning " + saved); // ★Debug Log - 必要なら有効化
+    return saved;
   }
   function getActiveComp() {
     var ac = app.project.activeItem;
-    return ac && ac instanceof CompItem ? ac : null;
+    var comp = ac && ac instanceof CompItem ? ac : null;
+    // writeLn("getActiveComp: Returning " + (comp ? comp.name : 'null')); // ★Debug Log - 必要なら有効化
+    return comp;
   }
   function findItemByName(name, parentFolder) {
     var proj = app.project;
     if (!proj || typeof name !== "string" || name === "") return null;
-    var searchFolder = parentFolder || proj.rootFolder; // 指定がなければルートから検索
+    var searchFolder = parentFolder || proj.rootFolder;
+    writeLn(
+      "findItemByName: Searching for '" +
+        name +
+        "' in folder '" +
+        searchFolder.name +
+        "'"
+    ); // ★Debug Log
 
     for (var i = 1; i <= searchFolder.numItems; i++) {
       var item = searchFolder.item(i);
-      if (item.name === name) {
+      // writeLn("  Checking item: " + item.name + " (Type: " + item.constructor.name + ")"); // ★Debug Log - 詳細すぎるかも
+      // 名前が一致し、かつフォルダでない場合に返す（フォルダとアイテムの同名避け）
+      if (item.name === name && !(item instanceof FolderItem)) {
+        writeLn("  Found item: " + item.name); // ★Debug Log
         return item;
       }
-      // サブフォルダ内も再帰的に検索する場合 (今回は不要)
-      // if (item instanceof FolderItem) {
-      //   var found = findItemByName(name, item);
-      //   if (found) return found;
-      // }
     }
-    // ルート直下も検索（parentFolder指定時） - 必要に応じて
-    if (parentFolder && parentFolder !== proj.rootFolder) {
-      for (var i = 1; i <= proj.rootFolder.numItems; i++) {
-        var item = proj.rootFolder.item(i);
-        if (item.name === name && !(item instanceof FolderItem)) {
-          // ルートのフォルダは除く
-          return item;
-        }
-      }
-    }
-
-    return null;
+    writeLn("  Item not found in this folder."); // ★Debug Log
+    return null; // 見つからなかった場合
   }
 
   // 指定したフォルダ内に、指定した名前のフォルダを探し、なければ作成する関数
-  // parentFolder を指定可能に修正
   function findOrCreateFolder(folderName, parentFolder) {
     var proj = app.project;
     if (!proj) return null;
-    var targetParent = parentFolder || proj.rootFolder; // 親フォルダ指定がなければルート
+    var targetParent = parentFolder || proj.rootFolder;
+    writeLn(
+      "findOrCreateFolder: Looking for folder '" +
+        folderName +
+        "' in '" +
+        targetParent.name +
+        "'"
+    ); // ★Debug Log
 
     // 既存フォルダを検索
     for (var i = 1; i <= targetParent.numItems; i++) {
       var item = targetParent.item(i);
       if (item instanceof FolderItem && item.name === folderName) {
-        return item; // 見つかったら返す
+        writeLn("  Found existing folder."); // ★Debug Log
+        return item;
       }
     }
     // 見つからなければ作成
+    writeLn("  Folder not found. Creating new folder..."); // ★Debug Log
     try {
-      return targetParent.items.addFolder(folderName);
+      var newFolder = targetParent.items.addFolder(folderName);
+      writeLn("  Successfully created folder: " + newFolder.name); // ★Debug Log
+      return newFolder;
     } catch (e) {
       writeLn(
         "フォルダ '" +
@@ -963,7 +1363,7 @@
     }
   }
 
-  // アイテムのフォルダパスを文字列で取得する（デバッグや確認用）
+  // アイテムのフォルダパスを文字列で取得（デバッグ用）
   function getItemFolderPath(item) {
     if (!item || !item.parentFolder) return "";
     var path = [];
@@ -975,119 +1375,267 @@
     return path.join("/");
   }
 
-  // --- ファイルI/Oヘルパー関数 ---
-  function getAEProjectName() {
-    if (!hasSavedProject()) return "Untitled";
+  // --- ファイルI/Oヘルパー関数 (設定ファイル関連) ---
+
+  // プロジェクトファイル名（拡張子なし）を取得する関数
+  // これをプロジェクト名ファイルのファイル名として使用
+  function getAEProjectIdentifier() {
+    if (!hasSavedProject()) {
+      writeLn("getAEProjectIdentifier: Project not saved, returning 'default'"); // ★Debug Log
+      return "default"; // 保存されていない場合の仮ID
+    }
     var file = app.project.file;
     if (file) {
       try {
         var nm = decodeURI(file.name);
-        return nm.replace(/\.aep$/i, "");
+        var id = nm.replace(/\.aep$/i, "");
+        writeLn("getAEProjectIdentifier: Returning ID: " + id); // ★Debug Log
+        return id;
       } catch (e) {
-        return file.name.replace(/\.aep$/i, "");
-      }
-    }
-    return "Untitled";
-  }
-
-  function getConfigFilePath() {
-    if (!app.project || !app.project.file) {
-      return null;
-    }
-    var projPath = app.project.file.path;
-    var projFileName = getAEProjectName();
-    if (projPath === "" || projFileName === "Untitled") {
-      return null;
-    }
-    var settingsFolderPath = projPath + "/" + SETTINGS_SUBDIR;
-    var configFilePath =
-      settingsFolderPath + "/" + projFileName + SETTINGS_SUFFIX;
-    return configFilePath;
-  }
-
-  function saveConfig(configData) {
-    var filePath = getConfigFilePath();
-    if (!filePath) {
-      throw new Error("プロジェクト未保存/パス無効のため設定保存不可。");
-    }
-    var settingsFolder = Folder(Folder(filePath).parent);
-    if (!settingsFolder.exists) {
-      if (!settingsFolder.create()) {
-        throw new Error(
-          "settings ディレクトリ作成失敗: " + settingsFolder.fsName
-        );
-      }
-    }
-    if (typeof configData !== "object" || configData === null) {
-      throw new Error("保存する設定データが無効です。");
-    }
-    var jsonString = JSON.stringify(configData, null, 2);
-    var configFile = File(filePath);
-    configFile.encoding = "UTF-8";
-    if (!configFile.open("w")) {
-      throw new Error("設定ファイルを開けませんでした(w): " + configFile.error);
-    }
-    try {
-      if (!configFile.write(jsonString)) {
-        throw new Error("設定ファイル書き込み失敗: " + configFile.error);
-      }
-      writeLn("設定を保存しました: " + filePath);
-    } finally {
-      configFile.close();
-    }
-  }
-
-  function loadConfig() {
-    var filePath = getConfigFilePath();
-    if (!filePath) {
-      return null;
-    }
-    var configFile = File(filePath);
-    if (!configFile.exists) {
-      return null;
-    }
-    configFile.encoding = "UTF-8";
-    if (!configFile.open("r")) {
-      throw new Error("設定ファイルを開けませんでした(r): " + configFile.error);
-    }
-    var jsonString = "";
-    try {
-      jsonString = configFile.read();
-    } finally {
-      configFile.close();
-    }
-    if (jsonString === "") {
-      return null;
-    }
-    try {
-      var configData = JSON.parse(jsonString);
-      var validConfig = {
-        project_name:
-          configData && typeof configData.project_name === "string"
-            ? configData.project_name
-            : "",
-        logo_path:
-          configData && typeof configData.logo_path === "string"
-            ? configData.logo_path
-            : "",
-      };
-      if (validConfig.logo_path && !File(validConfig.logo_path).exists) {
+        // decodeURI失敗時など
+        var fallbackId = file.name.replace(/\.aep$/i, "");
         writeLn(
-          "警告: 設定ファイルに記載されたロゴパスが見つかりません: " +
-            validConfig.logo_path
-        );
-        // validConfig.logo_path = ""; // パスが存在しない場合はクリアする方が安全かもしれない
+          "getAEProjectIdentifier: decodeURI failed, returning fallback ID: " +
+            fallbackId +
+            ", Error: " +
+            e.toString()
+        ); // ★Debug Log
+        return fallbackId;
       }
-      writeLn("設定を読み込みました: " + filePath);
-      return validConfig;
+    }
+    writeLn(
+      "getAEProjectIdentifier: Could not get file object, returning 'default'"
+    ); // ★Debug Log
+    return "default"; // 何らかの理由で取得できない場合
+  }
+
+  // ★追加: プロジェクトファイルのあるディレクトリのパスを取得する関数
+  function getProjectDirectoryPath() {
+    if (!app.project || !app.project.file) {
+      writeLn("getProjectDirectoryPath: Project not saved, returning null");
+      return null; // プロジェクトが保存されていない場合は null
+    }
+    var projPath = "";
+    try {
+      projPath = app.project.file.path;
+      if (projPath === null || projPath === undefined) {
+        if (app.project.file.parent) {
+          projPath = app.project.file.parent.fsName;
+          writeLn(
+            "getProjectDirectoryPath: Project path was null, using parent folder fsName: " +
+              projPath
+          );
+        } else {
+          writeLn(
+            "getProjectDirectoryPath: Project path is null and no parent folder. Cannot determine path."
+          );
+          return null;
+        }
+      }
     } catch (e) {
+      writeLn(
+        "getProjectDirectoryPath: Error getting project path: " + e.toString()
+      );
+      return null;
+    }
+
+    if (projPath === "") {
+      writeLn(
+        "getProjectDirectoryPath: Project path is empty string. Trying parent folder fsName again."
+      );
+      if (app.project.file.parent) {
+        projPath = app.project.file.parent.fsName;
+      } else {
+        writeLn(
+          "getProjectDirectoryPath: Project path is empty and no parent folder. Cannot determine path."
+        );
+        return null;
+      }
+    }
+
+    if (typeof projPath !== "string" || projPath.length === 0) {
+      writeLn(
+        "getProjectDirectoryPath: Could not determine valid project path. Path: " +
+          projPath
+      );
+      return null;
+    }
+    writeLn("getProjectDirectoryPath: Returning path: " + projPath);
+    return projPath;
+  }
+
+  // ★追加: .settings ディレクトリのフルパスを取得する関数
+  function getSettingsDirPath() {
+    var projDir = getProjectDirectoryPath();
+    if (!projDir) {
+      writeLn("getSettingsDirPath: Could not get project directory path.");
+      return null;
+    }
+    var settingsPath = projDir + "/" + SETTINGS_DIR_NAME;
+    writeLn("getSettingsDirPath: Returning settings dir path: " + settingsPath);
+    return settingsPath;
+  }
+
+  // ★追加: プロジェクト名設定ファイルのフルパスを取得する関数 (拡張子なし)
+  function getProjectNameFilePath() {
+    var settingsDir = getSettingsDirPath();
+    if (!settingsDir) {
+      writeLn("getProjectNameFilePath: Could not get settings directory path.");
+      return null;
+    }
+    var projectId = getAEProjectIdentifier();
+    if (projectId === "default") {
+      writeLn(
+        "getProjectNameFilePath: Invalid project ID 'default'. Cannot determine file path."
+      );
+      return null;
+    }
+    // ★修正: 拡張子 (.txt) を連結しない
+    var filePath = settingsDir + "/" + projectId;
+    writeLn(
+      "getProjectNameFilePath: Returning project name file path (extensionless): " +
+        filePath
+    );
+    return filePath;
+  }
+
+  // ★追加: プロジェクト名を .settings/[projectName] に保存する関数 (拡張子なし)
+  function saveProjectNameToSettingsFile(projectName) {
+    writeLn("--- saveProjectNameToSettingsFile START ---"); // ★Debug Log
+    var settingsDirPath = getSettingsDirPath();
+    var filePath = getProjectNameFilePath(); // 拡張子なしのパスを取得
+
+    if (!settingsDirPath || !filePath) {
+      writeLn(
+        "saveProjectNameToSettingsFile: Could not get settings/file path. Aborting."
+      );
       throw new Error(
-        "設定ファイル(JSON)解析失敗:\n" +
-          e.toString() +
-          "\nFile: " +
-          configFile.fsName
+        "プロジェクト未保存またはパス取得エラーのため設定保存不可。"
       );
     }
+
+    // .settings ディレクトリが存在するか確認し、なければ作成
+    var settingsDir = Folder(settingsDirPath);
+    if (!settingsDir.exists) {
+      writeLn(
+        "saveProjectNameToSettingsFile: Settings directory does not exist. Creating: " +
+          settingsDirPath
+      );
+      if (!settingsDir.create()) {
+        writeLn(
+          "saveProjectNameToSettingsFile: Failed to create settings directory: " +
+            settingsDir.error
+        );
+        throw new Error(
+          "設定ディレクトリの作成に失敗しました: " + settingsDir.error
+        );
+      }
+      writeLn(
+        "saveProjectNameToSettingsFile: Settings directory created successfully."
+      );
+    } else {
+      writeLn(
+        "saveProjectNameToSettingsFile: Settings directory already exists."
+      );
+    }
+
+    var projectFile = File(filePath); // File オブジェクトは拡張子なしでも扱える
+    writeLn(
+      "saveProjectNameToSettingsFile: Writing project name '" +
+        projectName +
+        "' to: " +
+        filePath
+    );
+
+    projectFile.encoding = "UTF-8";
+    if (!projectFile.open("w")) {
+      writeLn(
+        "saveProjectNameToSettingsFile: Error opening file for write: " +
+          projectFile.error
+      );
+      throw new Error(
+        "プロジェクト名ファイルを開けませんでした(w): " + projectFile.error
+      );
+    }
+    try {
+      // 引数で受け取った projectName (UIの入力値) をそのまま書き込む
+      var writeSuccess = projectFile.write(projectName);
+      if (!writeSuccess) {
+        var writeErrorMsg = projectFile.error || "Unknown write error";
+        writeLn(
+          "saveProjectNameToSettingsFile: File write failed: " + writeErrorMsg
+        );
+        throw new Error("プロジェクト名ファイル書き込み失敗: " + writeErrorMsg);
+      }
+      writeLn("saveProjectNameToSettingsFile: Write successful.");
+    } catch (writeError) {
+      writeLn(
+        "saveProjectNameToSettingsFile: Exception during file write: " +
+          writeError.toString()
+      );
+      projectFile.close(); // 書き込みエラー時も閉じる
+      throw writeError;
+    } finally {
+      if (projectFile.isOpen) projectFile.close();
+    }
+    writeLn("--- saveProjectNameToSettingsFile END ---"); // ★Debug Log
+  }
+
+  // ★追加: .settings/[projectName] からプロジェクト名を読み込む関数 (拡張子なし)
+  function loadProjectNameFromSettingsFile() {
+    writeLn("--- loadProjectNameFromSettingsFile START ---");
+    var filePath = getProjectNameFilePath(); // 拡張子なしのパスを取得
+    if (!filePath) {
+      writeLn(
+        "loadProjectNameFromSettingsFile: Could not get file path. Returning empty string."
+      );
+      writeLn("--- loadProjectNameFromSettingsFile END (No Path) ---");
+      return ""; // パスが取得できない場合は空を返す
+    }
+
+    var projectFile = File(filePath); // File オブジェクトは拡張子なしでも扱える
+    if (!projectFile.exists) {
+      writeLn(
+        "loadProjectNameFromSettingsFile: File not found: " +
+          filePath +
+          ". Returning empty string."
+      );
+      writeLn("--- loadProjectNameFromSettingsFile END (Not Found) ---");
+      return ""; // ファイルが存在しない場合は空を返す
+    }
+
+    writeLn("loadProjectNameFromSettingsFile: Reading file: " + filePath);
+    projectFile.encoding = "UTF-8";
+    if (!projectFile.open("r")) {
+      writeLn(
+        "loadProjectNameFromSettingsFile: Error opening file for read: " +
+          projectFile.error +
+          ". Returning empty string."
+      );
+      writeLn("--- loadProjectNameFromSettingsFile END (Error Open) ---");
+      return ""; // ファイルを開けない場合は空を返す
+    }
+
+    var projectName = "";
+    try {
+      projectName = projectFile.read();
+      writeLn(
+        "loadProjectNameFromSettingsFile: Read project name: " + projectName
+      );
+    } catch (readError) {
+      writeLn(
+        "loadProjectNameFromSettingsFile: Error reading file: " +
+          readError.toString() +
+          ". Returning empty string."
+      );
+      projectName = ""; // 読み込みエラーの場合も空にする
+      writeLn("--- loadProjectNameFromSettingsFile END (Error Read) ---");
+    } finally {
+      if (projectFile.isOpen) projectFile.close();
+    }
+
+    writeLn("--- loadProjectNameFromSettingsFile END (Success/Fail) ---");
+    return projectName; // 読み込んだ内容 (空文字列の場合もある) を返す
   }
 
   // --- ユーティリティ関数 ---
@@ -1102,41 +1650,79 @@
     var h = pad(d.getHours());
     var min = pad(d.getMinutes());
     var s = pad(d.getSeconds());
+    // タイムゾーンオフセットの書式を修正 (例: +0900)
     var offsetMinutes = -d.getTimezoneOffset();
     var sign = offsetMinutes >= 0 ? "+" : "-";
     offsetMinutes = Math.abs(offsetMinutes);
     var offsetH = Math.floor(offsetMinutes / 60);
     var offsetM = offsetMinutes % 60;
     function padOffset(v) {
-      return v < 10 ? "0" + v : v;
+      return (v < 10 ? "0" : "") + v;
     }
-    var offsetStr = sign + padOffset(offsetH) + ":" + padOffset(offsetM);
-    return y + "." + m + "." + day + "T" + h + ":" + min + ":" + s + offsetStr;
+    var offsetStr = sign + padOffset(offsetH) + padOffset(offsetM); // 区切り文字なし
+    return (
+      y +
+      "/" +
+      m +
+      "/" +
+      day +
+      " " +
+      h +
+      ":" +
+      min +
+      ":" +
+      s +
+      " (" +
+      offsetStr +
+      ")"
+    ); // より一般的な書式に変更
   }
+
   function convertSecondsToTC(durationSec, fps) {
     if (isNaN(durationSec) || isNaN(fps) || fps <= 0 || durationSec < 0) {
       return "00:00:00:00";
     }
-    var totalFrames = Math.round(durationSec * fps);
-    var hours = Math.floor(totalFrames / (fps * 3600));
-    var minutes = Math.floor((totalFrames % (fps * 3600)) / (fps * 60));
-    var seconds = Math.floor((totalFrames % (fps * 60)) / fps);
-    var frames =
-      totalFrames - hours * fps * 3600 - minutes * fps * 60 - seconds * fps;
-    frames = Math.max(0, Math.min(Math.round(frames), Math.round(fps) - 1));
-    function pad2(n) {
-      return n < 10 ? "0" + n : "" + n;
+    try {
+      var totalFrames = Math.floor(durationSec * fps + 0.00001); // 丸め誤差考慮
+      var rate = Math.round(fps); // 計算用のフレームレート整数
+
+      // 簡易計算
+      var isDrop = Math.abs(fps - 29.97) < 0.01 || Math.abs(fps - 59.94) < 0.01;
+      function pad2(n) {
+        return n < 10 ? "0" + n : "" + n;
+      }
+      var hours = Math.floor(totalFrames / (rate * 3600));
+      var minutes = Math.floor((totalFrames % (rate * 3600)) / (rate * 60));
+      var seconds = Math.floor((totalFrames % (rate * 60)) / rate);
+      var frames = totalFrames % rate;
+
+      if (isDrop) {
+        return (
+          pad2(hours) +
+          ":" +
+          pad2(minutes) +
+          ":" +
+          pad2(seconds) +
+          ";" +
+          pad2(frames)
+        );
+      } else {
+        return (
+          pad2(hours) +
+          ":" +
+          pad2(minutes) +
+          ":" +
+          pad2(seconds) +
+          ":" +
+          pad2(frames)
+        );
+      }
+    } catch (e) {
+      writeLn("Timecode calculation error: " + e.toString());
+      return "TC Error";
     }
-    return (
-      pad2(hours) +
-      ":" +
-      pad2(minutes) +
-      ":" +
-      pad2(seconds) +
-      ":" +
-      pad2(frames)
-    );
   }
+
   function padDigits(num, digits) {
     var s = String(Math.max(0, Math.round(num)));
     while (s.length < digits) {
@@ -1144,13 +1730,9 @@
     }
     return s;
   }
-  function writeLn(message) {
-    var currentTime = new Date().toLocaleTimeString();
-    var output = "[" + currentTime + "] " + message;
-    $.writeln(output);
-    // UIにログ表示エリアがあれば追加
-  }
 
   // --- スクリプト実行開始 ---
+  initializeLogFile(); // ログファイルに開始マーカーを書き込む
+  writeLn("Starting script: " + SCRIPT_NAME + " " + SCRIPT_VERSION);
   var myPanel = buildUI(thisObj);
 })(this);
