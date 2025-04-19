@@ -1,12 +1,12 @@
 // ================================================
 // KRACT Check Information AutoLayer
-// Version 2.24 (Logo processing removed)
+// Version 2.25 (Use existing logo footage)
 // ================================================
 
 (function (thisObj) {
   // --- グローバル設定 ---
   var SCRIPT_NAME = "Check Information AutoLayer";
-  var SCRIPT_VERSION = "2.24_noLogo"; // バージョン（ロゴ処理削除）
+  var SCRIPT_VERSION = "2.25_useExistingLogo"; // バージョン（既存ロゴフッテージ使用）
 
   var FONT_POSTSCRIPT_NAME = "GeistMono-Medium";
   var FONT_SIZE = 20;
@@ -16,6 +16,12 @@
 
   var SETTINGS_SUBDIR = "settings";
   var SETTINGS_SUFFIX = ".config.json";
+
+  // --- ロゴ設定 (プロジェクト内の既存フッテージを使用) ---
+  var LOGO_FOOTAGE_NAME = "checkinfo-logo.ai"; // プロジェクト内のロゴフッテージ名
+  var LOGO_LAYER_NAME = "logo"; // コンポに追加するレイヤー名
+  var LOGO_POSITION = [960, 1131.75]; // ロゴの位置 (X, Y)
+  var LOGO_SCALE = [16, 16]; // スケールは今回は固定
 
   // レイヤー設定
   var LAYER_SPECS = {
@@ -87,7 +93,7 @@
     editProjectName.helpTip =
       "テキストレイヤーに表示するプロジェクト名。設定ファイルがあれば自動入力されます。";
 
-    // ロゴ関連のUI要素は削除
+    // ロゴに関するUIは追加しない（自動でプロジェクト内を検索するため）
 
     var grpBtns = myPanel.add("group");
     grpBtns.orientation = "row";
@@ -97,7 +103,7 @@
     btnRefresh.helpTip = "ソース一覧を更新します";
     var btnApply = grpBtns.add("button", undefined, "実行");
     btnApply.helpTip =
-      "テキスト生成・設定、設定保存、プリコンポーズ、ソース再配置(Y575)"; // Help Tip 更新 (ロゴ削除)
+      "テキスト/ロゴ生成・設定、設定保存、プリコンポーズ、ソース再配置(Y575)"; // Help Tip 更新
 
     var avSources = [];
     btnRefresh.onClick = function () {
@@ -150,7 +156,7 @@
           );
         }
       }
-      app.beginUndoGroup(SCRIPT_NAME + ": 実行 (テキストレイヤー生成)"); // Undo Group名変更
+      app.beginUndoGroup(SCRIPT_NAME + ": 実行 (テキスト/ロゴ生成)"); // Undo Group名変更
       try {
         processComposition(ac, pickedObj, projectFileNameForLayer);
         alert("処理が完了しました。", SCRIPT_NAME);
@@ -166,8 +172,6 @@
       }
     };
 
-    // ロゴ選択ボタンのonClickは削除
-
     function initializePanel() {
       avSources = refreshSourceList(ddSource);
       try {
@@ -182,10 +186,7 @@
           SCRIPT_NAME
         );
       }
-      // updateLogoStatusUIの呼び出しは削除
     }
-
-    // updateLogoStatusUI関数は削除
 
     function getAvailableSources(comp) {
       var sources = [];
@@ -194,10 +195,11 @@
         var lyr = comp.layer(i);
         if (lyr instanceof AVLayer && lyr.source && lyr.source !== null) {
           var s = lyr.source;
+          // プリコンポーズ自体は対象外、ロゴフッテージも対象外にする
           if (s instanceof CompItem && s.name.indexOf(PRECOMP_PREFIX) !== 0) {
             sources.push({ source: s, type: "comp", name: s.name });
-          } else if (s instanceof FootageItem) {
-            // ロゴファイルのチェックロジックは削除
+          } else if (s instanceof FootageItem && s.name !== LOGO_FOOTAGE_NAME) {
+            // ロゴフッテージを除外
             if (s.mainSource && !s.mainSource.isStill) {
               // 動画フッテージのみ対象
               sources.push({ source: s, type: "footage", name: s.name });
@@ -244,7 +246,7 @@
     return myPanel;
   } // buildUI 終了
 
-  // --- メイン処理関数 (ロゴ処理削除) ---
+  // --- メイン処理関数 (ロゴ処理追加) ---
   function processComposition(activeComp, pickedObj, projectFileName) {
     if (!activeComp) return;
     if (!pickedObj || !pickedObj.source) {
@@ -254,15 +256,15 @@
     var sourceItem = pickedObj.source; // 操作対象のソースアイテム
     var sourceLayerInfo = { index: -1, name: "" }; // 削除前のソースレイヤー情報
 
-    // --- 0. 既存ソースレイヤーの情報を保持し、削除 ---
-    writeLn("--- 既存ソースレイヤー検索・削除開始 ---");
-    var foundAndRemoved = false;
+    // --- 0. 既存レイヤーの情報を保持し、削除 ---
+    writeLn("--- 既存レイヤー検索・削除開始 ---");
+    var foundAndRemovedSource = false;
     for (var i = activeComp.numLayers; i >= 1; i--) {
       var currentLayer = activeComp.layer(i);
-      // 既存のテキストレイヤーやプリコンポーズを削除対象にする
-      // ロゴレイヤーの削除チェックは不要
+      // 既存のテキストレイヤー、ロゴレイヤー、プリコンポーズを削除対象にする
       if (
         LAYER_SPECS[currentLayer.name] ||
+        currentLayer.name === LOGO_LAYER_NAME || // ロゴレイヤーも削除
         currentLayer.name.indexOf(PRECOMP_PREFIX) === 0
       ) {
         try {
@@ -299,15 +301,14 @@
               currentLayer.index +
               ")"
           );
-          if (!foundAndRemoved) {
-            // 最初のソースレイヤー情報のみ保持
+          if (!foundAndRemovedSource) {
             sourceLayerInfo.index = currentLayer.index;
             sourceLayerInfo.name = currentLayer.name;
           }
           if (currentLayer.locked) currentLayer.locked = false;
           currentLayer.remove();
           writeLn("  ソースレイヤー削除完了。");
-          foundAndRemoved = true;
+          foundAndRemovedSource = true;
         } catch (e) {
           writeLn(
             "警告: 既存ソースレイヤー '" +
@@ -318,7 +319,7 @@
         }
       }
     }
-    if (!foundAndRemoved) {
+    if (!foundAndRemovedSource) {
       writeLn("既存のソースレイヤーは見つかりませんでした。");
     }
     writeLn("--- 既存レイヤー検索・削除終了 ---");
@@ -329,8 +330,18 @@
       writeLn("コンポジションの高さを 1150px に変更しました。");
     }
 
-    // --- 1. ロゴフッテージの準備 (削除) ---
-    // ロゴ関連の処理は全て削除
+    // --- 1. ロゴフッテージの準備 (プロジェクト内から検索) ---
+    writeLn("--- ロゴフッテージ検索開始 ---");
+    var logoFootage = findItemByName(LOGO_FOOTAGE_NAME);
+    if (!logoFootage || !(logoFootage instanceof FootageItem)) {
+      throw new Error(
+        "ロゴフッテージ '" +
+          LOGO_FOOTAGE_NAME +
+          "' がプロジェクトに見つかりません。"
+      );
+    }
+    writeLn("ロゴフッテージ発見: " + logoFootage.name);
+    writeLn("--- ロゴフッテージ検索終了 ---");
 
     // --- 2. テキストレイヤーの生成・更新 ---
     var textLayers = {}; // 生成したテキストレイヤーを保持
@@ -339,7 +350,6 @@
     for (layerName in LAYER_SPECS) {
       if (!LAYER_SPECS.hasOwnProperty(layerName)) continue;
       var spec = LAYER_SPECS[layerName];
-      // 既存レイヤーはステップ0で削除済みのはずなので、常に新規作成
       textLayers[layerName] = createTextLayer(activeComp, layerName, spec);
       if (!textLayers[layerName]) {
         throw new Error(
@@ -369,22 +379,55 @@
     }
     setTextLayerContents(activeComp, textLayers, pickedObj, projectFileName);
 
-    // --- 3. ロゴレイヤーをアクティブコンポに追加 (削除) ---
-    // ロゴ関連の処理は全て削除
+    // --- 3. ロゴレイヤーをアクティブコンポに追加 ---
+    writeLn("--- ロゴレイヤー追加開始 ---");
+    var logoLayer = null;
+    try {
+      logoLayer = activeComp.layers.add(logoFootage);
+      if (!logoLayer) throw new Error("ロゴレイヤーの追加に失敗しました。");
+      logoLayer.name = LOGO_LAYER_NAME;
+      writeLn("ロゴレイヤーを追加しました: " + logoLayer.name);
+    } catch (e) {
+      throw new Error("ロゴレイヤー追加中にエラー発生:\n" + e.toString());
+    }
+    writeLn("--- ロゴレイヤー追加終了 ---");
 
-    // --- 4. 追加したロゴレイヤーのトランスフォーム設定 (削除) ---
-    // ロゴ関連の処理は全て削除
+    // --- 4. 追加したロゴレイヤーのトランスフォーム設定 ---
+    writeLn("--- ロゴレイヤートランスフォーム設定開始 ---");
+    try {
+      if (logoLayer.property("Position")) {
+        logoLayer.property("Position").setValue(LOGO_POSITION);
+        logoLayer.property("Scale").setValue(LOGO_SCALE);
+        writeLn(
+          "  ロゴ位置を [" + LOGO_POSITION.join(", ") + "] に設定しました。"
+        );
+      } else {
+        writeLn("警告: ロゴレイヤーの位置プロパティが見つかりません。");
+      }
+      // 必要に応じてスケール等の調整もここに追加
+      // var scaleProp = logoLayer.property("Scale");
+      // if (scaleProp) {
+      //    var currentScale = scaleProp.value;
+      //    // 計算ロジック...
+      //    // scaleProp.setValue([newScaleX, newScaleY]);
+      // }
+    } catch (e) {
+      writeLn(
+        "警告: ロゴレイヤートランスフォーム設定中にエラー発生:\n" + e.toString()
+      );
+    }
+    writeLn("--- ロゴレイヤートランスフォーム設定終了 ---");
 
-    // --- 5. プリコンポーズ処理 (テキストレイヤーのみ) ---
+    // --- 5. プリコンポーズ処理 (テキストレイヤー + ロゴレイヤー) ---
     var precompName = PRECOMP_PREFIX + activeComp.name;
     // 既存プリコンポーズはステップ0で削除済み
 
-    // プリコンポーズ対象レイヤー特定 (生成したテキストレイヤーのみ)
+    // プリコンポーズ対象レイヤー特定 (生成したテキストレイヤーとロゴレイヤー)
     var layersToPrecomposeIndices = [];
     for (var i = 1; i <= activeComp.numLayers; i++) {
       var layer = activeComp.layer(i);
-      // textLayersオブジェクトに存在するレイヤーのみを対象とする
-      if (textLayers[layer.name]) {
+      // textLayersオブジェクトに存在するか、またはロゴレイヤーか
+      if (textLayers[layer.name] || layer === logoLayer) {
         layersToPrecomposeIndices.push(layer.index); // レイヤーのインデックスを追加
       }
     }
@@ -398,14 +441,13 @@
     // プリコンポーズ実行
     if (layersToPrecomposeIndices.length > 0) {
       try {
-        // moveAllAttributes=true でエフェクトなども移動
         newComp = activeComp.layers.precompose(
           layersToPrecomposeIndices,
           precompName,
-          true
+          true // moveAllAttributes=true
         );
         if (newComp) {
-          writeLn("プリコンポーズ成功 (テキストのみ): " + newComp.name);
+          writeLn("プリコンポーズ成功 (テキスト+ロゴ): " + newComp.name);
           precompLayer = findLayerByName(activeComp, precompName); // 生成されたレイヤーを取得
         } else {
           throw new Error("プリコンポーズ作成失敗(null)。");
@@ -426,7 +468,7 @@
     writeLn("--- ソースレイヤー再追加処理開始 ---");
     var reAddedSourceLayer = null;
     try {
-      reAddedSourceLayer = activeComp.layers.add(sourceItem); // 再度追加
+      reAddedSourceLayer = activeComp.layers.add(sourceItem);
       if (!reAddedSourceLayer || !reAddedSourceLayer.isValid)
         throw new Error("ソースレイヤーの再追加に失敗しました。");
       writeLn("ソースレイヤーを再追加しました: " + reAddedSourceLayer.name);
@@ -445,7 +487,6 @@
         writeLn("警告: 再追加したソースレイヤーの位置を設定できません。");
       }
 
-      // レイヤー順序調整 (プリコンポーズレイヤーがあればその下、なければ最下層)
       if (precompLayer && precompLayer.isValid) {
         reAddedSourceLayer.moveAfter(precompLayer);
         writeLn("  レイヤー順序をプリコンポーズの下に移動しました。");
@@ -591,6 +632,18 @@
     var ac = app.project.activeItem;
     return ac && ac instanceof CompItem ? ac : null;
   }
+  // プロジェクト内のアイテムを名前で検索 (型指定なし)
+  function findItemByName(name) {
+    var proj = app.project;
+    if (!proj || typeof name !== "string" || name === "") return null;
+    for (var i = 1; i <= proj.numItems; i++) {
+      var item = proj.item(i);
+      if (item.name === name) {
+        return item; // 最初に見つかったものを返す
+      }
+    }
+    return null; // 見つからなかった場合
+  }
   // findOrCreateFolder は現在未使用だが、将来的に使う可能性を考慮して残す
   function findOrCreateFolder(folderName) {
     var proj = app.project;
@@ -607,22 +660,6 @@
       return null;
     }
   }
-  // findItemByNameAndType は現在未使用だが、汎用的なため残す
-  function findItemByNameAndType(name, itemType) {
-    var proj = app.project;
-    if (!proj || typeof name !== "string" || name === "" || !itemType)
-      return null;
-    for (var i = 1; i <= proj.numItems; i++) {
-      var item = proj.item(i);
-      if (item instanceof itemType && item.name === name) {
-        return item;
-      }
-    }
-    return null;
-  }
-
-  // --- ロゴ関連ヘルパー関数 (全て削除) ---
-  // getLogoFolderPath, getLogoFilePath, findFootageByPath, importLogoFile, setLogoLayerTransform は削除
 
   // --- ファイルI/Oヘルパー関数 ---
   function getAEProjectName() {
@@ -781,8 +818,6 @@
     // $.writeln(output); // ExtendScript Toolkit のコンソールに出力する場合
     try {
       // スクリプトUIパネルにログ表示エリアがあればそこに追加するなどの処理
-      // 例: if (myLogEditText) { myLogEditText.text += output + "\n"; }
-      // alert(output); // 簡易的にアラートで表示する場合（デバッグ時のみ有効に）
     } catch (e) {
       // alert("writeLn Error: " + e.toString());
     }
