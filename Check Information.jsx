@@ -212,7 +212,7 @@
     } else {
       // 不明
       compNameString = projectFileName + " | " + activeCompName;
-      compInfoString = "(不明なソース)";
+      compInfoString = "N/N";
     }
 
     compositionNameLayer.property("Source Text").setValue(compNameString);
@@ -265,33 +265,20 @@
     }
     var offsetStr = sign + padOffset(offsetH) + ":" + padOffset(offsetM);
 
-    var osInfo = $.os;
-    var machineName = "";
-    if (osInfo.indexOf("Mac") >= 0) {
-      machineName = system.callSystem("scutil --get ComputerName");
-    } else if (osInfo.indexOf("Windows") >= 0) {
-      machineName = system.callSystem("hostname");
-    } else {
-      machineName = "UnknownOS";
-    }
-    machineName = machineName.replace(/[\r\n]+$/, "");
-
     return (
       year +
       "." +
       month +
       "." +
       day +
-      " T " +
+      "T" +
       hour +
       ":" +
       min +
       ":" +
       sec +
-      " " +
-      offsetStr +
-      " " +
-      machineName
+      "" +
+      offsetStr
     );
   }
 
