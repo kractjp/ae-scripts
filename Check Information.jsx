@@ -1,27 +1,21 @@
 // ================================================
 // KRACT Check Information AutoLayer
-// Version 2.24
+// Version 2.24 (Logo processing removed)
 // ================================================
 
 (function (thisObj) {
   // --- グローバル設定 ---
   var SCRIPT_NAME = "Check Information AutoLayer";
-  var SCRIPT_VERSION = "2.24_logoInPrecompTarget"; // バージョン（ロゴもプリコンポーズ対象に）
+  var SCRIPT_VERSION = "2.24_noLogo"; // バージョン（ロゴ処理削除）
 
   var FONT_POSTSCRIPT_NAME = "GeistMono-Medium";
   var FONT_SIZE = 20;
 
   var PRECOMP_PREFIX = "_check-data_";
-  var PRECOMP_FOLDER_NAME = "_check-data";
+  var PRECOMP_FOLDER_NAME = "_check-data"; // Not currently used, but kept for potential future use
 
   var SETTINGS_SUBDIR = "settings";
   var SETTINGS_SUFFIX = ".config.json";
-
-  var LOGO_SUBDIR = "Adobe/After Effects/CheckInfoLogoData";
-  var LOGO_FILE_NAME = "checkinfo-logo.ai";
-  var LOGO_LAYER_NAME = "logo"; // コンポに追加するレイヤー名
-  // var LOGO_TARGET_HEIGHT = 16; // スケール計算は不要
-  var LOGO_POSITION = [960, 1131.75]; // ロゴの位置 (X, Y)
 
   // レイヤー設定
   var LAYER_SPECS = {
@@ -92,28 +86,9 @@
     var editProjectName = panelProject.add("edittext", [0, 0, 280, 20], "");
     editProjectName.helpTip =
       "テキストレイヤーに表示するプロジェクト名。設定ファイルがあれば自動入力されます。";
-    var panelLogo = myPanel.add("panel", undefined, "ロゴ設定");
-    panelLogo.orientation = "row";
-    panelLogo.alignChildren = ["left", "center"];
-    panelLogo.spacing = 10;
-    panelLogo.margins = 10;
-    var btnSelectLogo = panelLogo.add("button", undefined, "ロゴ選択＆設定...");
-    btnSelectLogo.helpTip =
-      "ロゴファイルを選択し、ユーザーデータフォルダ内の指定場所に'" +
-      LOGO_FILE_NAME +
-      "'としてコピー・設定します";
-    var stSelectedLogo = panelLogo.add("statictext", undefined, "...", {
-      truncate: "middle",
-    });
-    stSelectedLogo.helpTip =
-      "現在のロゴ設定状態 (" +
-      Folder.userData.fsName +
-      "/" +
-      LOGO_SUBDIR +
-      "/" +
-      LOGO_FILE_NAME +
-      ")";
-    stSelectedLogo.preferredSize.width = 180;
+
+    // ロゴ関連のUI要素は削除
+
     var grpBtns = myPanel.add("group");
     grpBtns.orientation = "row";
     grpBtns.alignment = "center";
@@ -122,7 +97,8 @@
     btnRefresh.helpTip = "ソース一覧を更新します";
     var btnApply = grpBtns.add("button", undefined, "実行");
     btnApply.helpTip =
-      "テキスト/ロゴ生成・設定、設定保存、プリコンポーズ、ソース再配置(Y575)"; // Help Tip 更新
+      "テキスト生成・設定、設定保存、プリコンポーズ、ソース再配置(Y575)"; // Help Tip 更新 (ロゴ削除)
+
     var avSources = [];
     btnRefresh.onClick = function () {
       avSources = refreshSourceList(ddSource);
@@ -174,7 +150,7 @@
           );
         }
       }
-      app.beginUndoGroup(SCRIPT_NAME + ": 実行 (ロゴもプリコンポーズ)"); // Undo Group名変更
+      app.beginUndoGroup(SCRIPT_NAME + ": 実行 (テキストレイヤー生成)"); // Undo Group名変更
       try {
         processComposition(ac, pickedObj, projectFileNameForLayer);
         alert("処理が完了しました。", SCRIPT_NAME);
@@ -189,56 +165,9 @@
         app.endUndoGroup();
       }
     };
-    btnSelectLogo.onClick = function () {
-      try {
-        var userSelectedFile = File.openDialog(
-          "ロゴファイルを選択してください",
-          "Illustrator AI:*.ai;All Files:*.*",
-          false
-        );
-        if (userSelectedFile) {
-          var targetFolderPath = getLogoFolderPath();
-          var targetFilePath = targetFolderPath + "/" + LOGO_FILE_NAME;
-          if (!targetFolderPath) {
-            throw new Error(
-              "スクリプトが保存されていないため、ロゴを格納できません。"
-            );
-          }
-          var targetFolder = Folder(targetFolderPath);
-          if (!targetFolder.exists) {
-            if (!targetFolder.create()) {
-              throw new Error(
-                "ロゴ格納フォルダの作成に失敗しました:\n" + targetFolderPath
-              );
-            }
-          }
-          if (userSelectedFile.copy(targetFilePath)) {
-            stSelectedLogo.text = LOGO_FILE_NAME + " (設定済)";
-            alert(
-              "ロゴを設定しました。\n指定のユーザーデータフォルダ内に'" +
-                LOGO_FILE_NAME +
-                "'としてコピーされました。",
-              SCRIPT_NAME
-            );
-          } else {
-            throw new Error(
-              "ロゴファイルのコピーに失敗しました。\nコピー元: " +
-                userSelectedFile.fsName +
-                "\nコピー先: " +
-                targetFilePath
-            );
-          }
-        } else {
-          updateLogoStatusUI(stSelectedLogo);
-        }
-      } catch (e) {
-        alert(
-          "ロゴ設定中にエラーが発生しました:\n" + e.toString(),
-          SCRIPT_NAME
-        );
-        updateLogoStatusUI(stSelectedLogo);
-      }
-    };
+
+    // ロゴ選択ボタンのonClickは削除
+
     function initializePanel() {
       avSources = refreshSourceList(ddSource);
       try {
@@ -253,28 +182,11 @@
           SCRIPT_NAME
         );
       }
-      updateLogoStatusUI(stSelectedLogo);
+      // updateLogoStatusUIの呼び出しは削除
     }
-    function updateLogoStatusUI(statusTextElement) {
-      var logoFilePath = getLogoFilePath(true);
-      var logoFolder = Folder(getLogoFolderPath(true));
-      if (logoFilePath && logoFolder) {
-        var logoFile = File(logoFilePath);
-        if (logoFile.exists) {
-          statusTextElement.text = LOGO_FILE_NAME + " (設定済)";
-          statusTextElement.helpTip =
-            "ロゴファイルが見つかりました:\n" + logoFile.fsName;
-        } else {
-          statusTextElement.text = "ロゴ未設定";
-          statusTextElement.helpTip =
-            "ロゴファイルが見つかりません:\n" + logoFilePath;
-        }
-      } else {
-        statusTextElement.text = "ロゴ未設定 (パス取得不可)";
-        statusTextElement.helpTip =
-          "ロゴの格納先フォルダパスを取得できませんでした。";
-      }
-    }
+
+    // updateLogoStatusUI関数は削除
+
     function getAvailableSources(comp) {
       var sources = [];
       if (!comp) return sources;
@@ -285,26 +197,9 @@
           if (s instanceof CompItem && s.name.indexOf(PRECOMP_PREFIX) !== 0) {
             sources.push({ source: s, type: "comp", name: s.name });
           } else if (s instanceof FootageItem) {
-            var isLogo = false;
-            var logoPath = getLogoFilePath(true);
-            if (logoPath) {
-              var logoFile = File(logoPath);
-              try {
-                var itemFilePath =
-                  s.mainSource && s.mainSource.file
-                    ? decodeURI(s.mainSource.file.fsName)
-                    : s.file
-                    ? decodeURI(s.file.fsName)
-                    : null;
-                if (
-                  itemFilePath &&
-                  logoFile.fsName === File(itemFilePath).fsName
-                ) {
-                  isLogo = true;
-                }
-              } catch (e) {}
-            }
-            if (!isLogo && s.mainSource && !s.mainSource.isStill) {
+            // ロゴファイルのチェックロジックは削除
+            if (s.mainSource && !s.mainSource.isStill) {
+              // 動画フッテージのみ対象
               sources.push({ source: s, type: "footage", name: s.name });
             }
           }
@@ -312,6 +207,7 @@
       }
       return sources;
     }
+
     function refreshSourceList(dropdown) {
       dropdown.removeAll();
       var currentSources = [];
@@ -348,7 +244,7 @@
     return myPanel;
   } // buildUI 終了
 
-  // --- メイン処理関数 (処理順序を変更) ---
+  // --- メイン処理関数 (ロゴ処理削除) ---
   function processComposition(activeComp, pickedObj, projectFileName) {
     if (!activeComp) return;
     if (!pickedObj || !pickedObj.source) {
@@ -357,19 +253,17 @@
 
     var sourceItem = pickedObj.source; // 操作対象のソースアイテム
     var sourceLayerInfo = { index: -1, name: "" }; // 削除前のソースレイヤー情報
-    var logoFootageItem = null; // ロゴフッテージアイテム
-    var addedLogoLayer = null; // アクティブコンポに追加されたロゴレイヤー
 
     // --- 0. 既存ソースレイヤーの情報を保持し、削除 ---
     writeLn("--- 既存ソースレイヤー検索・削除開始 ---");
     var foundAndRemoved = false;
     for (var i = activeComp.numLayers; i >= 1; i--) {
       var currentLayer = activeComp.layer(i);
-      // 既存のテキストレイヤーやプリコンポーズ、ロゴレイヤーも削除対象にする
+      // 既存のテキストレイヤーやプリコンポーズを削除対象にする
+      // ロゴレイヤーの削除チェックは不要
       if (
         LAYER_SPECS[currentLayer.name] ||
-        currentLayer.name.indexOf(PRECOMP_PREFIX) === 0 ||
-        currentLayer.name === LOGO_LAYER_NAME
+        currentLayer.name.indexOf(PRECOMP_PREFIX) === 0
       ) {
         try {
           writeLn(
@@ -435,33 +329,8 @@
       writeLn("コンポジションの高さを 1150px に変更しました。");
     }
 
-    // --- 1. ロゴフッテージの準備 ---
-    try {
-      var logoFilePath = getLogoFilePath();
-      if (logoFilePath) {
-        var logoFile = File(logoFilePath);
-        if (logoFile.exists) {
-          logoFootageItem = findFootageByPath(logoFile.fsName);
-          if (!logoFootageItem) {
-            logoFootageItem = importLogoFile(logoFile);
-          }
-          if (logoFootageItem && logoFootageItem.isValid) {
-            writeLn("ロゴフッテージを準備しました: " + logoFootageItem.name);
-          } else {
-            writeLn(
-              "警告: ロゴファイルのインポート/検索に失敗、または無効なアイテムです。"
-            );
-            logoFootageItem = null;
-          }
-        } else {
-          writeLn("設定されたロゴファイルが見つかりません: " + logoFile.fsName);
-        }
-      } else {
-        writeLn("ロゴファイルのパスを取得できませんでした。");
-      }
-    } catch (e) {
-      alert("ロゴ処理中にエラー:\n" + e.toString(), SCRIPT_NAME);
-    }
+    // --- 1. ロゴフッテージの準備 (削除) ---
+    // ロゴ関連の処理は全て削除
 
     // --- 2. テキストレイヤーの生成・更新 ---
     var textLayers = {}; // 生成したテキストレイヤーを保持
@@ -500,66 +369,22 @@
     }
     setTextLayerContents(activeComp, textLayers, pickedObj, projectFileName);
 
-    // --- 3. ロゴレイヤーをアクティブコンポに追加 ---
-    if (logoFootageItem && logoFootageItem.isValid) {
-      writeLn(
-        "アクティブコンポ '" + activeComp.name + "' にロゴを配置します..."
-      );
-      try {
-        addedLogoLayer = activeComp.layers.add(logoFootageItem); // アクティブコンポに追加
-        if (addedLogoLayer && addedLogoLayer.isValid) {
-          addedLogoLayer.name = LOGO_LAYER_NAME; // 名前設定
-          writeLn(
-            "ロゴレイヤー '" +
-              addedLogoLayer.name +
-              "' をアクティブコンポに追加しました。"
-          );
-        } else {
-          writeLn("警告: アクティブコンポへのロゴレイヤー追加に失敗しました。");
-          addedLogoLayer = null;
-        }
-      } catch (e) {
-        writeLn(
-          "警告: アクティブコンポへのロゴレイヤー追加中にエラー:\n" +
-            e.toString()
-        );
-        addedLogoLayer = null;
-      }
-    } else {
-      writeLn(
-        "ロゴフッテージが見つからないか無効なため、ロゴは配置されません。"
-      );
-    }
+    // --- 3. ロゴレイヤーをアクティブコンポに追加 (削除) ---
+    // ロゴ関連の処理は全て削除
 
-    // --- 4. 追加したロゴレイヤーのトランスフォーム設定 ---
-    if (addedLogoLayer) {
-      // ロゴレイヤーが正常に追加された場合のみ実行
-      try {
-        setLogoLayerTransform(addedLogoLayer, logoFootageItem); // トランスフォーム設定
-        writeLn(
-          "アクティブコンポ内のロゴレイヤーのトランスフォームを設定しました。"
-        );
-      } catch (e) {
-        writeLn(
-          "警告: アクティブコンポ内のロゴレイヤーのトランスフォーム設定中にエラー:\n" +
-            e.toString()
-        );
-      }
-    }
+    // --- 4. 追加したロゴレイヤーのトランスフォーム設定 (削除) ---
+    // ロゴ関連の処理は全て削除
 
-    // --- 5. プリコンポーズ処理 (テキストレイヤー + ロゴレイヤー) ---
+    // --- 5. プリコンポーズ処理 (テキストレイヤーのみ) ---
     var precompName = PRECOMP_PREFIX + activeComp.name;
     // 既存プリコンポーズはステップ0で削除済み
 
-    // プリコンポーズ対象レイヤー特定 (生成したテキストレイヤー + 追加したロゴレイヤー)
+    // プリコンポーズ対象レイヤー特定 (生成したテキストレイヤーのみ)
     var layersToPrecomposeIndices = [];
     for (var i = 1; i <= activeComp.numLayers; i++) {
       var layer = activeComp.layer(i);
-      // textLayersオブジェクトに存在するレイヤーか、addedLogoLayerと同じレイヤーを対象とする
-      if (
-        textLayers[layer.name] ||
-        (addedLogoLayer && layer.index === addedLogoLayer.index)
-      ) {
+      // textLayersオブジェクトに存在するレイヤーのみを対象とする
+      if (textLayers[layer.name]) {
         layersToPrecomposeIndices.push(layer.index); // レイヤーのインデックスを追加
       }
     }
@@ -580,7 +405,7 @@
           true
         );
         if (newComp) {
-          writeLn("プリコンポーズ成功 (テキスト+ロゴ): " + newComp.name);
+          writeLn("プリコンポーズ成功 (テキストのみ): " + newComp.name);
           precompLayer = findLayerByName(activeComp, precompName); // 生成されたレイヤーを取得
         } else {
           throw new Error("プリコンポーズ作成失敗(null)。");
@@ -766,6 +591,7 @@
     var ac = app.project.activeItem;
     return ac && ac instanceof CompItem ? ac : null;
   }
+  // findOrCreateFolder は現在未使用だが、将来的に使う可能性を考慮して残す
   function findOrCreateFolder(folderName) {
     var proj = app.project;
     if (!proj) return null;
@@ -781,6 +607,7 @@
       return null;
     }
   }
+  // findItemByNameAndType は現在未使用だが、汎用的なため残す
   function findItemByNameAndType(name, itemType) {
     var proj = app.project;
     if (!proj || typeof name !== "string" || name === "" || !itemType)
@@ -794,163 +621,8 @@
     return null;
   }
 
-  // --- ロゴ関連ヘルパー関数 ---
-  function getLogoFolderPath(suppressError) {
-    var userDataFolder = Folder.userData;
-    if (!userDataFolder || !userDataFolder.exists) {
-      if (!suppressError) writeLn("ユーザーデータフォルダが見つかりません。");
-      return null;
-    }
-    var logoFolder = Folder(userDataFolder.fsName + "/" + LOGO_SUBDIR);
-    if (!logoFolder.exists) {
-      if (!logoFolder.create()) {
-        if (!suppressError)
-          writeLn("ロゴフォルダの作成に失敗: " + logoFolder.fsName);
-        return null;
-      } else {
-        if (!suppressError)
-          writeLn("ロゴフォルダを作成しました: " + logoFolder.fsName);
-      }
-    }
-    return logoFolder.fsName;
-  }
-  function getLogoFilePath(suppressError) {
-    var logoFolderPath = getLogoFolderPath(suppressError);
-    if (!logoFolderPath) return null;
-    var logoFilePath = logoFolderPath + "/" + LOGO_FILE_NAME;
-    return logoFilePath;
-  }
-  function findFootageByPath(filePath) {
-    var proj = app.project;
-    if (!proj || typeof filePath !== "string" || filePath === "") return null;
-    var targetFile = File(decodeURI(filePath));
-    if (!targetFile.exists) return null;
-
-    for (var i = 1; i <= proj.numItems; i++) {
-      var item = proj.item(i);
-      if (item instanceof FootageItem) {
-        var itemFile = null;
-        try {
-          if (item.mainSource && item.mainSource.file) {
-            itemFile = item.mainSource.file;
-          } else if (item.file) {
-            itemFile = item.file;
-          }
-          if (itemFile && decodeURI(itemFile.fsName) === targetFile.fsName) {
-            return item;
-          }
-        } catch (e) {}
-      }
-    }
-    return null;
-  }
-  function importLogoFile(logoFile) {
-    if (!(logoFile instanceof File) || !logoFile.exists) return null;
-    try {
-      writeLn("ロゴファイルをインポートします: " + logoFile.fsName);
-      var importOptions = new ImportOptions(logoFile);
-      if (importOptions.canImportAs(ImportAsType.FOOTAGE)) {
-        importOptions.importAs = ImportAsType.FOOTAGE;
-        writeLn("  ImportAsType.FOOTAGE を設定");
-      } else {
-        writeLn(
-          "警告: フッテージとしてインポートできません。インポートタイプを確認してください。"
-        );
-        importOptions.sequence = false;
-      }
-      importOptions.sequence = false;
-      var importedItem = app.project.importFile(importOptions);
-      if (importedItem) {
-        writeLn("インポート成功: " + importedItem.name);
-      } else {
-        writeLn("インポート失敗: importFile が null を返しました。");
-      }
-      return importedItem;
-    } catch (e) {
-      writeLn(
-        "ロゴファイルのインポート中にエラー: " +
-          logoFile.fsName +
-          "\n" +
-          e.toString()
-      );
-      return null;
-    }
-  }
-
-  // ロゴレイヤーのトランスフォームを設定する関数 (変更なし)
-  function setLogoLayerTransform(logoLayer, footageItem) {
-    if (
-      !logoLayer ||
-      !logoLayer.isValid ||
-      !footageItem ||
-      !footageItem.isValid
-    ) {
-      writeLn("setLogoLayerTransform: 無効な引数です。");
-      return;
-    }
-    writeLn(
-      "ロゴレイヤー '" + logoLayer.name + "' のトランスフォーム設定開始..."
-    );
-    try {
-      var scaleProp = logoLayer.property("Scale");
-      var anchorPointProp = logoLayer.property("Anchor Point");
-      var positionProp = logoLayer.property("Position");
-
-      if (!scaleProp || !anchorPointProp || !positionProp) {
-        throw new Error("トランスフォームプロパティが見つかりません。");
-      }
-
-      // 1. アンカーポイントをフッテージの中央に設定
-      try {
-        var anchorX = footageItem.width / 2;
-        var anchorY = footageItem.height / 2;
-        anchorPointProp.setValue([anchorX, anchorY]);
-        writeLn("  アンカーポイント設定: [" + anchorX + ", " + anchorY + "]");
-      } catch (apError) {
-        writeLn("警告: アンカーポイント設定エラー: " + apError.toString());
-      }
-
-      // 2. 位置を設定 (LOGO_POSITION 変数を参照)
-      try {
-        positionProp.setValue(LOGO_POSITION);
-        writeLn(
-          "  位置設定: [" + LOGO_POSITION[0] + ", " + LOGO_POSITION[1] + "]"
-        );
-      } catch (posError) {
-        writeLn("警告: 位置設定エラー: " + posError.toString());
-      }
-
-      // 3. サイズ設定 (固定スケール [16, 16]%)
-      try {
-        var targetScale = [16, 16];
-        if (
-          scaleProp.canSetValue &&
-          scaleProp.value instanceof Array &&
-          scaleProp.value.length >= 2
-        ) {
-          scaleProp.setValue(targetScale);
-          writeLn(
-            "  固定スケール設定: [" +
-              targetScale[0] +
-              "%, " +
-              targetScale[1] +
-              "%]"
-          );
-        } else {
-          writeLn(
-            "警告: スケールプロパティに値を設定できないか、形式が不正です。"
-          );
-        }
-      } catch (scaleError) {
-        writeLn("警告: スケール設定中にエラー: " + scaleError.toString());
-      }
-    } catch (e) {
-      writeLn("ロゴレイヤーの設定中に予期せぬエラー: " + e.toString());
-    }
-    writeLn(
-      "ロゴレイヤー '" + logoLayer.name + "' のトランスフォーム設定終了。"
-    );
-  }
+  // --- ロゴ関連ヘルパー関数 (全て削除) ---
+  // getLogoFolderPath, getLogoFilePath, findFootageByPath, importLogoFile, setLogoLayerTransform は削除
 
   // --- ファイルI/Oヘルパー関数 ---
   function getAEProjectName() {
