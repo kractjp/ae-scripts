@@ -22,11 +22,15 @@
   var LOGO_SCALE = [16, 16];
 
   // ★★★ デバッグログファイル設定 ★★★
+  var ENABLE_DEBUG_LOGGING = false;
   var DEBUG_LOG_FILENAME = "CheckInfo_DebugLog.txt";
   var DEBUG_LOG_FILE_PATH = Folder.desktop.fsName + "/" + DEBUG_LOG_FILENAME;
 
   // --- ログ書き込み関数 ---
   function logToFile(message) {
+    if (!ENABLE_DEBUG_LOGGING) {
+      return;
+    }
     try {
       var logFile = File(DEBUG_LOG_FILE_PATH);
       logFile.encoding = "UTF-8";
@@ -59,6 +63,9 @@
     logToFile(message);
   }
   function initializeLogFile() {
+    if (!ENABLE_DEBUG_LOGGING) {
+      return;
+    }
     var separator =
       "\n====================\nScript Execution Started: " +
       SCRIPT_NAME +
