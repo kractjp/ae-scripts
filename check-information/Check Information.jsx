@@ -1,13 +1,13 @@
 // ================================================
 // KRACT Check Information AutoLayer
-// Version 2.40 (Remove Top Margin/Border)
+// Version 2.41
 // ================================================
 
 (function (thisObj) {
   // --- グローバル設定 ---
   var SCRIPT_NAME = "Check Information AutoLayer";
-  var SCRIPT_VERSION = "2.40_no_top_margin"; // バージョン更新
-  var FONT_POSTSCRIPT_NAME = "GeistMono-Medium";
+  var SCRIPT_VERSION = "2.41"; // バージョン更新
+  var FONT_POSTSCRIPT_NAME = "GeistMono-Regular";
   var FONT_SIZE = 20;
   var PRECOMP_PREFIX = "_check-data_";
   var PRECOMP_FOLDER_NAME = "_check-data";
@@ -116,34 +116,34 @@
 
   var LAYER_SPECS = {
     timecode: {
-      pos: [14, 18.5275],
+      pos: [-40, 18.5275],
       ap: [0.4633, -7.1503],
       expression: '"REC TC/Fm: " + timeToCurrentFormat(time)',
       justification: ParagraphJustification.LEFT_JUSTIFY,
     },
     frame_num: {
-      pos: [283, 18.5275],
+      pos: [229, 18.5275],
       ap: [0.4633, -7.1503],
       expression: '"/" + ("00000" + Math.max(0, timeToFrames(time))).slice(-5)',
       justification: ParagraphJustification.LEFT_JUSTIFY,
     },
     comp_name: {
-      pos: [960.1207, 18.5275],
+      pos: [906.1207, 18.5275],
       ap: [0.2238, -7.1503],
       justification: ParagraphJustification.CENTER_JUSTIFY,
     },
     comp_info: {
-      pos: [1905.3997, 18.5275],
+      pos: [1851.3997, 18.5275],
       ap: [0.8504, -7.1503],
       justification: ParagraphJustification.RIGHT_JUSTIFY,
     },
     current_info: {
-      pos: [14, 1132.83],
+      pos: [-40, 1132.83],
       ap: [0.2238, -7.1503],
       justification: ParagraphJustification.LEFT_JUSTIFY,
     },
     project_name: {
-      pos: [1905.3997, 1132.83],
+      pos: [1851.3997, 1132.83],
       ap: [0.7238, -7.1503],
       justification: ParagraphJustification.RIGHT_JUSTIFY,
     },
